@@ -230,15 +230,15 @@ class GeminiQueryService:
         try:
             genai.configure(api_key=self._api_key)
             self._model = genai.GenerativeModel(
-                model_name="gemini-1.5-pro",  # Smarter model for better understanding
+                model_name="gemini-2.5-flash-preview-05-20",  # Latest smart model
                 generation_config={
-                    "temperature": 0.2,  # Slightly higher for better creativity
+                    "temperature": 0.2,
                     "top_p": 0.95,
                     "top_k": 40,
                     "max_output_tokens": 1024,
                 }
             )
-            logger.info("Gemini Pro model initialized successfully")
+            logger.info("Gemini 2.5 Flash model initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini: {e}")
             self._model = None

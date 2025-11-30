@@ -132,72 +132,62 @@ class SmartRAGService:
             
             # Handle mood by converting to genres
             mood = entities.get("mood")
-            mood_genres = None
+            mood_genres = []
             if mood:
                 # Normalize mood and get genres
                 mood_lower = mood.lower().replace("-", " ").replace("_", " ")
                 mood_genres = entities.get("mood_genres") or MOOD_TO_GENRES.get(mood_lower, [])
                 logger.info(f"Mood '{mood}' mapped to genres: {mood_genres}")
             
-            if entities.get("director"):
+            # Capture values for lambda closures
+            director = entities.get("director")
+            actor = entities.get("actor")
+            genres = entities.get("genres")
+            year_min = entities.get("year_min")
+            year_max = entities.get("year_max")
+            
+            if director:
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_by_director(
-                        entities["director"],
-                        limit=limit,
-                        year_min=entities.get("year_min"),
-                        year_max=entities.get("year_max")
+                    lambda d=director, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_director(
+                        d, limit=l, year_min=ymin, year_max=ymax
                     )
                 )
-            elif entities.get("actor"):
+            elif actor:
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_by_actor(
-                        entities["actor"],
-                        limit=limit
-                    )
+                    lambda a=actor, l=limit: graph_query_service.search_by_actor(a, limit=l)
                 )
             elif mood_genres:
                 # Mood-based search - use mood genres
+                logger.info(f"Executing mood genre search with genres: {mood_genres}")
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_by_genre(
-                        mood_genres,
-                        limit=limit,
-                        year_min=entities.get("year_min"),
-                        year_max=entities.get("year_max")
+                    lambda g=mood_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
+                        g, limit=l, year_min=ymin, year_max=ymax
                     )
                 )
-            elif entities.get("genres"):
+            elif genres:
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_by_genre(
-                        entities["genres"],
-                        limit=limit,
-                        year_min=entities.get("year_min"),
-                        year_max=entities.get("year_max")
+                    lambda g=genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
+                        g, limit=l, year_min=ymin, year_max=ymax
                     )
                 )
-            elif entities.get("year_min") or entities.get("year_max"):
+            elif year_min or year_max:
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_by_year_range(
-                        entities.get("year_min", 1900),
-                        entities.get("year_max", 2030),
-                        genres=entities.get("genres"),
-                        limit=limit
+                    lambda ymin=year_min, ymax=year_max, g=genres, l=limit: graph_query_service.search_by_year_range(
+                        ymin or 1900, ymax or 2030, genres=g, limit=l
                     )
                 )
             else:
-                # Combined search or fallback
+                # Combined search or fallback - use mood_genres if available
+                search_genres = mood_genres if mood_genres else genres
                 results = await loop.run_in_executor(
                     self._executor,
-                    lambda: graph_query_service.search_combined(
-                        director=entities.get("director"),
-                        actor=entities.get("actor"),
-                        genres=entities.get("genres"),
-                        year_min=entities.get("year_min"),
-                        limit=limit
+                    lambda d=director, a=actor, g=search_genres, ymin=year_min, l=limit: graph_query_service.search_combined(
+                        director=d, actor=a, genres=g, year_min=ymin, limit=l
                     )
                 )
             
