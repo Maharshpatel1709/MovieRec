@@ -59,7 +59,7 @@ class GraphQueryService:
             m.popularity as popularity,
             genres,
             d.name as director_name
-        ORDER BY m.vote_average DESC, m.popularity DESC
+        ORDER BY m.popularity DESC, m.vote_average DESC
         LIMIT $limit
         """
         
@@ -111,7 +111,7 @@ class GraphQueryService:
             m.popularity as popularity,
             genres,
             a.name as actor_name
-        ORDER BY m.vote_average DESC, m.popularity DESC
+        ORDER BY m.popularity DESC, m.vote_average DESC
         LIMIT $limit
         """
         
@@ -164,7 +164,7 @@ class GraphQueryService:
             m.poster_path as poster_path,
             m.popularity as popularity,
             genres
-        ORDER BY m.vote_average DESC, m.popularity DESC
+        ORDER BY m.popularity DESC, m.vote_average DESC
         LIMIT $limit
         """
         
@@ -210,7 +210,7 @@ class GraphQueryService:
                 m.poster_path as poster_path,
                 m.popularity as popularity,
                 genres
-            ORDER BY m.vote_average DESC, m.popularity DESC
+            ORDER BY m.popularity DESC, m.vote_average DESC
             LIMIT $limit
             """
             params["genres"] = genres
@@ -230,7 +230,7 @@ class GraphQueryService:
                 m.poster_path as poster_path,
                 m.popularity as popularity,
                 genres
-            ORDER BY m.vote_average DESC, m.popularity DESC
+            ORDER BY m.popularity DESC, m.vote_average DESC
             LIMIT $limit
             """
         
@@ -311,7 +311,7 @@ class GraphQueryService:
             m.popularity as popularity,
             genres,
             directors
-        ORDER BY m.vote_average DESC, m.popularity DESC
+        ORDER BY m.popularity DESC, m.vote_average DESC
         LIMIT $limit
         """
         
@@ -364,7 +364,7 @@ class GraphQueryService:
             related.vote_average as vote_average,
             related.poster_path as poster_path,
             genres
-        ORDER BY related.vote_average DESC
+        ORDER BY related.popularity DESC, related.vote_average DESC
         LIMIT $limit
         """
         
@@ -504,7 +504,7 @@ class GraphQueryService:
             shared_actors,
             shared_directors,
             same_era
-        ORDER BY similarity_score DESC, candidate.vote_average DESC
+        ORDER BY similarity_score DESC, candidate.popularity DESC
         LIMIT $limit
         """
         
