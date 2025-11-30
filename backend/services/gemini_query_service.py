@@ -46,74 +46,78 @@ class ParsedQuery:
 
 
 # System prompt for Gemini
-SYSTEM_PROMPT = """You are a movie database query assistant. Your job is to parse natural language queries about movies and convert them into structured JSON that can be used to query a Neo4j graph database.
+SYSTEM_PROMPT = """You are a movie query parser. Extract structured information from natural language queries about movies.
 
-The database has the following schema:
-- (:Movie) - Properties: movie_id, title, overview, release_year, vote_average, popularity, poster_path
-- (:Actor) - Properties: actor_id, name
-- (:Director) - Properties: director_id, name
-- (:Genre) - Properties: genre_id, name
-- Relationships: (Actor)-[:ACTED_IN]->(Movie), (Director)-[:DIRECTED]->(Movie), (Movie)-[:HAS_GENRE]->(Genre)
+**YOUR PRIMARY JOB**: Understand what the user wants and extract the relevant entities (director, actor, genre, movie title, year).
 
-Available genres: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Science Fiction, Thriller, War, Western
+**IMPORTANT GUIDELINES**:
+1. Be FLEXIBLE with grammar and sentence structure. All these mean the same thing:
+   - "movies directed by Zack Snyder"
+   - "Zack Snyder movies" 
+   - "films by zack snyder"
+   - "zack snyder films"
+   - "show me zack snyder's movies"
+   - "what movies did zack snyder direct"
 
-**CRITICAL: YOU MUST CORRECT ALL TYPOS AND MISSPELLINGS!**
-Your most important job is to recognize and FIX typos in names and titles. Users often misspell names.
-ALWAYS return the CORRECT spelling, not what the user typed!
+2. Extract ANY person name that appears to be a director or actor based on context:
+   - "directed by X" / "by director X" → X is a director
+   - "starring X" / "with X" / "featuring X" → X is an actor
+   - "X movies" / "X films" → Could be director OR actor (use your knowledge)
 
-Common corrections you MUST make:
-- "Cristopher Nolan" → "Christopher Nolan"
-- "Spielburg" → "Steven Spielberg"  
-- "Leanardo DiCaprio" → "Leonardo DiCaprio"
-- "Scorsese" or "Scorcese" → "Martin Scorsese"
-- "Schwarzeneger" → "Arnold Schwarzenegger"
-- "Quenten/Quintin Tarantino" → "Quentin Tarantino"
-- "Ridley Scot" → "Ridley Scott"
-- "Tim Burten" → "Tim Burton"
-- "Denis Villneuv" → "Denis Villeneuve"
-- "Tom Hanks", "Tome Hanks" → "Tom Hanks"
-- "Inseption" → "Inception"
-- "The Dark Nite/Knight" → "The Dark Knight"
-- "Shawshank Redemtion" → "The Shawshank Redemption"
+3. FIX typos if you notice them, but don't reject queries just because of spelling:
+   - "Cristopher Nolan" → "Christopher Nolan"
+   - "Spielburg" → "Steven Spielberg"
+   - "zak snyder" → "Zack Snyder"
 
-If you recognize who/what the user means despite typos, CORRECT IT!
+4. Available genres: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Science Fiction, Thriller, War, Western
 
-Queries you CAN handle:
-- Movies by director: "Christopher Nolan films", "Spielberg movies"
-- Movies with actor: "Tom Hanks movies", "DiCaprio films"
-- Movies of genre: "horror movies", "sci-fi thrillers"
-- Movies from year/decade: "90s action movies", "movies from 2020"
-- Similar movies: "movies like Inception", "films similar to The Matrix"
-- Combinations: "Christopher Nolan sci-fi movies"
+**SUPPORTED QUERIES** (return is_supported: true):
+- Director queries: "movies directed by X", "X movies", "X's films"
+- Actor queries: "movies with X", "X movies", "starring X"
+- Genre queries: "horror movies", "action films", "sci-fi"
+- Year/decade: "90s movies", "films from 2020", "movies between 2010-2020"
+- Similar movies: "movies like Inception", "similar to The Matrix"
+- Combinations: "Nolan sci-fi movies", "90s action with Schwarzenegger"
 
-Queries you CANNOT handle (mark as unsupported):
-- Mood/emotional: "movies that will make me cry", "feel-good movies"
-- Plot-based: "movies with twist endings", "movies where hero dies"
-- Subjective quality: "underrated movies", "best movies ever"
-- Thematic: "movies about redemption", "existentialist films"
-- Visual/style: "visually stunning movies", "noir aesthetic"
-- Abstract: "mind-bending", "thought-provoking"
+**UNSUPPORTED QUERIES** (return is_supported: false):
+- Mood/feeling: "feel-good movies", "movies that make me cry"
+- Plot details: "movies with twist endings", "where the hero dies"
+- Subjective: "best movies", "underrated gems", "must-watch"
+- Abstract: "mind-bending", "thought-provoking", "deep movies"
 
-Respond with JSON:
+**RESPONSE FORMAT** (JSON only):
 {
-    "is_supported": true/false,
-    "query_type": "director|actor|genre|similar|year|combined|unsupported",
+    "is_supported": true,
+    "query_type": "director|actor|genre|similar|year|combined",
     "entities": {
-        "director": "CORRECTED name or null",
-        "actor": "CORRECTED name or null", 
-        "genres": ["list"] or null,
-        "similar_to_movie": "CORRECTED title or null",
-        "year_min": number or null,
-        "year_max": number or null,
-        "rating_min": number or null
+        "director": "Full Name or null",
+        "actor": "Full Name or null",
+        "genres": ["Genre1", "Genre2"] or null,
+        "similar_to_movie": "Movie Title or null",
+        "year_min": 1990 or null,
+        "year_max": 1999 or null,
+        "rating_min": null
     },
-    "explanation": "What was detected (mention corrections made)",
-    "unsupported_reason": "If unsupported, explain why"
+    "explanation": "Brief description of what was understood",
+    "unsupported_reason": ""
 }
 
-Examples:
+**EXAMPLES**:
+
+User: "movies directed by zack snyder"
+{"is_supported": true, "query_type": "director", "entities": {"director": "Zack Snyder", "actor": null, "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies directed by Zack Snyder", "unsupported_reason": ""}
+
+User: "show me some tom hanks films"
+{"is_supported": true, "query_type": "actor", "entities": {"director": null, "actor": "Tom Hanks", "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies starring Tom Hanks", "unsupported_reason": ""}
+
+User: "i want to watch thriller movies from the 90s"
+{"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": null, "genres": ["Thriller"], "similar_to_movie": null, "year_min": 1990, "year_max": 1999, "rating_min": null}, "explanation": "Thriller movies from 1990-1999", "unsupported_reason": ""}
+
 User: "Cristopher Nolan movies"
-Response: {"is_supported": true, "query_type": "director", "entities": {"director": "Christopher Nolan", "actor": null, "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Searching for movies directed by Christopher Nolan (corrected spelling)", "unsupported_reason": ""}
+{"is_supported": true, "query_type": "director", "entities": {"director": "Christopher Nolan", "actor": null, "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies by Christopher Nolan (corrected spelling)", "unsupported_reason": ""}
+
+User: "movies that will make me cry"
+{"is_supported": false, "query_type": "unsupported", "entities": {}, "explanation": "Mood-based query", "unsupported_reason": "I can't search by emotional impact. Try: 'drama movies' or 'romantic films'"}
 
 User: "movies like Inseption"
 Response: {"is_supported": true, "query_type": "similar", "entities": {"director": null, "actor": null, "genres": null, "similar_to_movie": "Inception", "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Finding movies similar to Inception (corrected from Inseption)", "unsupported_reason": ""}
@@ -382,6 +386,13 @@ class GeminiQueryService:
                     unsupported_reason=f"I can't search by {reason}. Try searching by genre, director, actor, or year instead."
                 )
         
+        # Check for "directed by X" pattern first - extract any name after it
+        directed_by_match = re.search(r'directed by\s+([a-z]+(?:\s+[a-z]+)*)', query_lower)
+        if directed_by_match:
+            director_name = directed_by_match.group(1).strip().title()
+            entities["director"] = director_name
+            query_type = QueryType.DIRECTOR
+        
         # Extract director (known names + variations)
         known_directors = [
             ("christopher nolan", "Christopher Nolan"),
@@ -393,7 +404,6 @@ class GeminiQueryService:
             ("quentin tarantino", "Quentin Tarantino"),
             ("tarantino", "Quentin Tarantino"),
             ("james cameron", "James Cameron"),
-            ("cameron", "James Cameron"),
             ("david fincher", "David Fincher"),
             ("fincher", "David Fincher"),
             ("ridley scott", "Ridley Scott"),
@@ -405,12 +415,45 @@ class GeminiQueryService:
             ("alfred hitchcock", "Alfred Hitchcock"),
             ("hitchcock", "Alfred Hitchcock"),
             ("tim burton", "Tim Burton"),
+            ("zack snyder", "Zack Snyder"),
+            ("snyder", "Zack Snyder"),
+            ("michael bay", "Michael Bay"),
+            ("bay", "Michael Bay"),
+            ("peter jackson", "Peter Jackson"),
+            ("george lucas", "George Lucas"),
+            ("lucas", "George Lucas"),
+            ("francis ford coppola", "Francis Ford Coppola"),
+            ("coppola", "Francis Ford Coppola"),
+            ("clint eastwood", "Clint Eastwood"),
+            ("eastwood", "Clint Eastwood"),
+            ("ron howard", "Ron Howard"),
+            ("guy ritchie", "Guy Ritchie"),
+            ("ritchie", "Guy Ritchie"),
+            ("m night shyamalan", "M. Night Shyamalan"),
+            ("shyamalan", "M. Night Shyamalan"),
+            ("guillermo del toro", "Guillermo del Toro"),
+            ("del toro", "Guillermo del Toro"),
+            ("jj abrams", "J.J. Abrams"),
+            ("abrams", "J.J. Abrams"),
+            ("sam raimi", "Sam Raimi"),
+            ("raimi", "Sam Raimi"),
+            ("edgar wright", "Edgar Wright"),
+            ("russo brothers", "Russo Brothers"),
+            ("russo", "Russo Brothers"),
         ]
         for pattern, full_name in known_directors:
-            if pattern in query_lower:
+            if pattern in query_lower and not entities.get("director"):
                 entities["director"] = full_name
                 query_type = QueryType.DIRECTOR
                 break
+        
+        # Check for "starring X" or "with X" pattern - extract actor name
+        starring_match = re.search(r'(?:starring|with|featuring)\s+([a-z]+(?:\s+[a-z]+)*)', query_lower)
+        if starring_match and not entities.get("actor"):
+            actor_name = starring_match.group(1).strip().title()
+            entities["actor"] = actor_name
+            if query_type != QueryType.DIRECTOR:
+                query_type = QueryType.ACTOR
         
         # Extract actor (known names + variations)
         known_actors = [
@@ -418,29 +461,62 @@ class GeminiQueryService:
             ("hanks", "Tom Hanks"),
             ("leonardo dicaprio", "Leonardo DiCaprio"),
             ("dicaprio", "Leonardo DiCaprio"),
+            ("leo dicaprio", "Leonardo DiCaprio"),
             ("brad pitt", "Brad Pitt"),
+            ("pitt", "Brad Pitt"),
             ("tom cruise", "Tom Cruise"),
             ("cruise", "Tom Cruise"),
             ("morgan freeman", "Morgan Freeman"),
+            ("freeman", "Morgan Freeman"),
             ("robert de niro", "Robert De Niro"),
             ("de niro", "Robert De Niro"),
             ("al pacino", "Al Pacino"),
             ("pacino", "Al Pacino"),
             ("will smith", "Will Smith"),
             ("denzel washington", "Denzel Washington"),
+            ("washington", "Denzel Washington"),
             ("johnny depp", "Johnny Depp"),
+            ("depp", "Johnny Depp"),
             ("christian bale", "Christian Bale"),
             ("bale", "Christian Bale"),
             ("matt damon", "Matt Damon"),
             ("damon", "Matt Damon"),
             ("scarlett johansson", "Scarlett Johansson"),
+            ("johansson", "Scarlett Johansson"),
             ("jennifer lawrence", "Jennifer Lawrence"),
             ("meryl streep", "Meryl Streep"),
+            ("streep", "Meryl Streep"),
             ("arnold schwarzenegger", "Arnold Schwarzenegger"),
             ("schwarzenegger", "Arnold Schwarzenegger"),
             ("sylvester stallone", "Sylvester Stallone"),
             ("stallone", "Sylvester Stallone"),
             ("keanu reeves", "Keanu Reeves"),
+            ("reeves", "Keanu Reeves"),
+            ("ryan gosling", "Ryan Gosling"),
+            ("gosling", "Ryan Gosling"),
+            ("chris hemsworth", "Chris Hemsworth"),
+            ("hemsworth", "Chris Hemsworth"),
+            ("robert downey jr", "Robert Downey Jr."),
+            ("downey", "Robert Downey Jr."),
+            ("chris evans", "Chris Evans"),
+            ("samuel l jackson", "Samuel L. Jackson"),
+            ("jackson", "Samuel L. Jackson"),
+            ("dwayne johnson", "Dwayne Johnson"),
+            ("the rock", "Dwayne Johnson"),
+            ("jason statham", "Jason Statham"),
+            ("statham", "Jason Statham"),
+            ("vin diesel", "Vin Diesel"),
+            ("diesel", "Vin Diesel"),
+            ("margot robbie", "Margot Robbie"),
+            ("robbie", "Margot Robbie"),
+            ("gal gadot", "Gal Gadot"),
+            ("gadot", "Gal Gadot"),
+            ("henry cavill", "Henry Cavill"),
+            ("cavill", "Henry Cavill"),
+            ("ben affleck", "Ben Affleck"),
+            ("affleck", "Ben Affleck"),
+            ("jason momoa", "Jason Momoa"),
+            ("momoa", "Jason Momoa"),
         ]
         for pattern, full_name in known_actors:
             if pattern in query_lower:
