@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 from loguru import logger
 
-from backend.services.gemini_query_service import gemini_query_service, ParsedQuery, QueryType
+from backend.services.gemini_query_service import gemini_query_service, ParsedQuery, QueryType, MOOD_TO_GENRES
 from backend.services.graph_query_service import graph_query_service
 from backend.services.neo4j_service import neo4j_service
 
@@ -130,6 +130,15 @@ class SmartRAGService:
             # Use the graph query service methods based on extracted entities
             entities = parsed.extracted_entities
             
+            # Handle mood by converting to genres
+            mood = entities.get("mood")
+            mood_genres = None
+            if mood:
+                # Normalize mood and get genres
+                mood_lower = mood.lower().replace("-", " ").replace("_", " ")
+                mood_genres = entities.get("mood_genres") or MOOD_TO_GENRES.get(mood_lower, [])
+                logger.info(f"Mood '{mood}' mapped to genres: {mood_genres}")
+            
             if entities.get("director"):
                 results = await loop.run_in_executor(
                     self._executor,
@@ -146,6 +155,17 @@ class SmartRAGService:
                     lambda: graph_query_service.search_by_actor(
                         entities["actor"],
                         limit=limit
+                    )
+                )
+            elif mood_genres:
+                # Mood-based search - use mood genres
+                results = await loop.run_in_executor(
+                    self._executor,
+                    lambda: graph_query_service.search_by_genre(
+                        mood_genres,
+                        limit=limit,
+                        year_min=entities.get("year_min"),
+                        year_max=entities.get("year_max")
                     )
                 )
             elif entities.get("genres"):
@@ -278,11 +298,11 @@ class SmartRAGService:
         """Generate response for unsupported queries."""
         # Build helpful suggestions
         suggestions = [
+            "Something scary",
+            "Feel-good 90s movies",
             "Christopher Nolan movies",
-            "90s action films",
             "Movies with Tom Hanks",
-            "Sci-fi thrillers",
-            "Movies like The Dark Knight"
+            "Movies like Inception"
         ]
         
         answer = f"""I understand you're looking for something specific, but I can't directly search for **{parsed.explanation}**.
@@ -293,6 +313,7 @@ class SmartRAGService:
 - 🎬 **Directors**: "Christopher Nolan movies"
 - 🌟 **Actors**: "Films with Leonardo DiCaprio"
 - 🎭 **Genres**: "Horror movies", "Sci-fi thrillers"
+- 💫 **Moods**: "Something scary", "Feel-good movies", "Dark thrillers"
 - 📅 **Years**: "90s comedies", "Movies from 2020"
 - 🔗 **Similar movies**: "Movies like Inception"
 
@@ -323,6 +344,11 @@ Try one of the suggestions below!"""
             parts.append(f"Here are movies directed by **{entities['director']}**")
         elif entities.get("actor"):
             parts.append(f"Here are movies featuring **{entities['actor']}**")
+        elif parsed.query_type == QueryType.MOOD or entities.get("mood"):
+            mood = entities.get("mood", "your mood")
+            mood_genres = entities.get("mood_genres") or MOOD_TO_GENRES.get(mood.lower().replace("-", " "), [])
+            genres_str = ", ".join(mood_genres[:3]) if mood_genres else "matching"
+            parts.append(f"For a **{mood}** mood, here are some **{genres_str}** movies")
         elif entities.get("genres"):
             genres = ", ".join(entities["genres"])
             parts.append(f"Here are some great **{genres}** movies")

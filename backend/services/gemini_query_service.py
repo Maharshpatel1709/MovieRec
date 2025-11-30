@@ -23,10 +23,63 @@ class QueryType(Enum):
     DIRECTOR = "director"
     ACTOR = "actor"
     GENRE = "genre"
+    MOOD = "mood"
     SIMILAR = "similar"
     YEAR = "year"
     COMBINED = "combined"
     UNSUPPORTED = "unsupported"
+
+
+# Mood to Genre mapping - maps user moods/feelings to relevant genres
+MOOD_TO_GENRES = {
+    "exciting": ["Action", "Adventure", "Thriller", "Science Fiction", "War"],
+    "fun": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "lighthearted": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "light hearted": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "dark": ["Crime", "Thriller", "Drama", "Horror"],
+    "gritty": ["Crime", "Thriller", "Drama", "Horror"],
+    "intense": ["Action", "Thriller", "Horror", "Crime"],
+    "emotional": ["Drama", "Romance", "Family", "Music"],
+    "heartfelt": ["Drama", "Romance", "Family", "Music"],
+    "heart felt": ["Drama", "Romance", "Family", "Music"],
+    "mysterious": ["Mystery", "Crime", "Thriller", "Science Fiction"],
+    "suspenseful": ["Mystery", "Thriller", "Crime", "Horror"],
+    "thought provoking": ["Documentary", "Drama", "Science Fiction", "History"],
+    "thoughtprovoking": ["Documentary", "Drama", "Science Fiction", "History"],
+    "thought-provoking": ["Documentary", "Drama", "Science Fiction", "History"],
+    "intellectual": ["Documentary", "Drama", "History", "Science Fiction"],
+    "whimsical": ["Fantasy", "Animation", "Family"],
+    "magical": ["Fantasy", "Animation", "Family"],
+    "scary": ["Horror", "Thriller"],
+    "creepy": ["Horror", "Thriller"],
+    "epic": ["Fantasy", "Adventure", "War", "History"],
+    "heroic": ["Fantasy", "Adventure", "War", "History"],
+    "nostalgic": ["Family", "Animation", "Romance", "Music", "Western"],
+    "comforting": ["Family", "Animation", "Romance", "Music", "Western"],
+    "realistic": ["Documentary", "Drama", "Crime", "History"],
+    "raw": ["Documentary", "Drama", "Crime", "History"],
+    "artistic": ["Music", "Fantasy", "Documentary", "Drama"],
+    "stylish": ["Music", "Fantasy", "Drama", "Documentary"],
+    "adventurous": ["Adventure", "Science Fiction", "Fantasy"],
+    "exploratory": ["Adventure", "Science Fiction", "Fantasy"],
+    "romantic": ["Romance", "Music", "Comedy", "Drama"],
+    "affectionate": ["Romance", "Comedy", "Drama", "Family"],
+    "inspirational": ["War", "History", "Drama", "Adventure"],
+    "inspiring": ["War", "History", "Drama", "Adventure"],
+    "moral": ["War", "History", "Drama", "Adventure"],
+    "feel good": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "feel-good": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "feelgood": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "happy": ["Comedy", "Family", "Animation", "Romance", "Music"],
+    "sad": ["Drama", "Romance", "Family"],
+    "cry": ["Drama", "Romance", "Family"],
+    "uplifting": ["Comedy", "Family", "Drama", "Adventure"],
+    "mind bending": ["Science Fiction", "Thriller", "Mystery"],
+    "mind-bending": ["Science Fiction", "Thriller", "Mystery"],
+    "mindbending": ["Science Fiction", "Thriller", "Mystery"],
+    "chill": ["Comedy", "Family", "Animation", "Romance"],
+    "relaxing": ["Comedy", "Family", "Animation", "Romance", "Documentary"],
+}
 
 
 @dataclass
@@ -48,51 +101,67 @@ class ParsedQuery:
 # System prompt for Gemini
 SYSTEM_PROMPT = """You are a movie query parser. Extract structured information from natural language queries about movies.
 
-**YOUR PRIMARY JOB**: Understand what the user wants and extract the relevant entities (director, actor, genre, movie title, year).
+**YOUR PRIMARY JOB**: Understand what the user wants and extract the relevant entities (director, actor, genre, mood, movie title, year).
 
 **IMPORTANT GUIDELINES**:
 1. Be FLEXIBLE with grammar and sentence structure. All these mean the same thing:
    - "movies directed by Zack Snyder"
    - "Zack Snyder movies" 
    - "films by zack snyder"
-   - "zack snyder films"
    - "show me zack snyder's movies"
-   - "what movies did zack snyder direct"
 
 2. Extract ANY person name that appears to be a director or actor based on context:
    - "directed by X" / "by director X" → X is a director
    - "starring X" / "with X" / "featuring X" → X is an actor
    - "X movies" / "X films" → Could be director OR actor (use your knowledge)
 
-3. FIX typos if you notice them, but don't reject queries just because of spelling:
+3. FIX typos if you notice them:
    - "Cristopher Nolan" → "Christopher Nolan"
    - "Spielburg" → "Steven Spielberg"
    - "zak snyder" → "Zack Snyder"
 
 4. Available genres: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Science Fiction, Thriller, War, Western
 
+5. **MOOD DETECTION** - Recognize these moods and map them:
+   - Exciting/Intense → Action, Adventure, Thriller
+   - Fun/Lighthearted/Happy → Comedy, Family, Animation
+   - Dark/Gritty → Crime, Thriller, Drama, Horror
+   - Emotional/Heartfelt/Sad → Drama, Romance, Family
+   - Mysterious/Suspenseful → Mystery, Crime, Thriller
+   - Thought-provoking/Intellectual → Documentary, Drama, Science Fiction
+   - Whimsical/Magical → Fantasy, Animation, Family
+   - Scary/Creepy → Horror, Thriller
+   - Epic/Heroic → Fantasy, Adventure, War, History
+   - Nostalgic/Comforting → Family, Animation, Romance
+   - Romantic/Affectionate → Romance, Comedy, Drama
+   - Inspirational/Uplifting → Drama, Adventure, History
+   - Feel-good → Comedy, Family, Animation, Romance
+   - Mind-bending → Science Fiction, Thriller, Mystery
+   - Relaxing/Chill → Comedy, Family, Animation
+
 **SUPPORTED QUERIES** (return is_supported: true):
-- Director queries: "movies directed by X", "X movies", "X's films"
-- Actor queries: "movies with X", "X movies", "starring X"
-- Genre queries: "horror movies", "action films", "sci-fi"
-- Year/decade: "90s movies", "films from 2020", "movies between 2010-2020"
-- Similar movies: "movies like Inception", "similar to The Matrix"
-- Combinations: "Nolan sci-fi movies", "90s action with Schwarzenegger"
+- Director: "movies directed by X", "X movies", "X's films"
+- Actor: "movies with X", "starring X"
+- Genre: "horror movies", "action films", "sci-fi"
+- **Mood**: "feel-good movies", "something scary", "intense films", "movies that make me cry"
+- Year/decade: "90s movies", "films from 2020"
+- Similar: "movies like Inception", "similar to The Matrix"
+- Combinations: "Nolan sci-fi movies", "90s action with Schwarzenegger", "fun 80s movies"
 
 **UNSUPPORTED QUERIES** (return is_supported: false):
-- Mood/feeling: "feel-good movies", "movies that make me cry"
 - Plot details: "movies with twist endings", "where the hero dies"
-- Subjective: "best movies", "underrated gems", "must-watch"
-- Abstract: "mind-bending", "thought-provoking", "deep movies"
+- Subjective quality: "best movies ever", "underrated gems", "must-watch", "top 10"
+- Vague without mood: "good movies", "something nice"
 
 **RESPONSE FORMAT** (JSON only):
 {
     "is_supported": true,
-    "query_type": "director|actor|genre|similar|year|combined",
+    "query_type": "director|actor|genre|mood|similar|year|combined",
     "entities": {
         "director": "Full Name or null",
         "actor": "Full Name or null",
         "genres": ["Genre1", "Genre2"] or null,
+        "mood": "detected mood keyword or null",
         "similar_to_movie": "Movie Title or null",
         "year_min": 1990 or null,
         "year_max": 1999 or null,
@@ -105,28 +174,31 @@ SYSTEM_PROMPT = """You are a movie query parser. Extract structured information 
 **EXAMPLES**:
 
 User: "movies directed by zack snyder"
-{"is_supported": true, "query_type": "director", "entities": {"director": "Zack Snyder", "actor": null, "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies directed by Zack Snyder", "unsupported_reason": ""}
+{"is_supported": true, "query_type": "director", "entities": {"director": "Zack Snyder", "actor": null, "genres": null, "mood": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies directed by Zack Snyder", "unsupported_reason": ""}
+
+User: "i want something scary"
+{"is_supported": true, "query_type": "mood", "entities": {"director": null, "actor": null, "genres": null, "mood": "scary", "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Looking for scary movies (Horror, Thriller)", "unsupported_reason": ""}
+
+User: "feel good movies from the 90s"
+{"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": null, "genres": null, "mood": "feel good", "similar_to_movie": null, "year_min": 1990, "year_max": 1999, "rating_min": null}, "explanation": "Feel-good movies from 1990s (Comedy, Family, Animation, Romance)", "unsupported_reason": ""}
+
+User: "movies that will make me cry"
+{"is_supported": true, "query_type": "mood", "entities": {"director": null, "actor": null, "genres": null, "mood": "emotional", "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Emotional movies (Drama, Romance, Family)", "unsupported_reason": ""}
+
+User: "something mind-bending like Inception"
+{"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": null, "genres": null, "mood": "mind-bending", "similar_to_movie": "Inception", "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Mind-bending movies similar to Inception", "unsupported_reason": ""}
+
+User: "dark thriller movies"
+{"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": null, "genres": ["Thriller"], "mood": "dark", "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Dark thriller movies (Crime, Thriller, Drama)", "unsupported_reason": ""}
 
 User: "show me some tom hanks films"
-{"is_supported": true, "query_type": "actor", "entities": {"director": null, "actor": "Tom Hanks", "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies starring Tom Hanks", "unsupported_reason": ""}
+{"is_supported": true, "query_type": "actor", "entities": {"director": null, "actor": "Tom Hanks", "genres": null, "mood": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies starring Tom Hanks", "unsupported_reason": ""}
 
-User: "i want to watch thriller movies from the 90s"
-{"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": null, "genres": ["Thriller"], "similar_to_movie": null, "year_min": 1990, "year_max": 1999, "rating_min": null}, "explanation": "Thriller movies from 1990-1999", "unsupported_reason": ""}
-
-User: "Cristopher Nolan movies"
-{"is_supported": true, "query_type": "director", "entities": {"director": "Christopher Nolan", "actor": null, "genres": null, "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Movies by Christopher Nolan (corrected spelling)", "unsupported_reason": ""}
-
-User: "movies that will make me cry"
-{"is_supported": false, "query_type": "unsupported", "entities": {}, "explanation": "Mood-based query", "unsupported_reason": "I can't search by emotional impact. Try: 'drama movies' or 'romantic films'"}
+User: "best movies ever made"
+{"is_supported": false, "query_type": "unsupported", "entities": {}, "explanation": "Subjective quality query", "unsupported_reason": "I can't rank movies by quality. Try: 'highly rated movies' or specify a genre/mood like 'epic adventure movies'"}
 
 User: "movies like Inseption"
-Response: {"is_supported": true, "query_type": "similar", "entities": {"director": null, "actor": null, "genres": null, "similar_to_movie": "Inception", "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Finding movies similar to Inception (corrected from Inseption)", "unsupported_reason": ""}
-
-User: "Leanardo Dicaprio thriller movies"
-Response: {"is_supported": true, "query_type": "combined", "entities": {"director": null, "actor": "Leonardo DiCaprio", "genres": ["Thriller"], "similar_to_movie": null, "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Searching for thriller movies with Leonardo DiCaprio (corrected spelling)", "unsupported_reason": ""}
-
-User: "movies that will make me cry"
-Response: {"is_supported": false, "query_type": "unsupported", "entities": {}, "explanation": "This is a mood-based query", "unsupported_reason": "I can't search by emotional impact. Try: 'drama movies' or 'romantic movies' instead."}
+{"is_supported": true, "query_type": "similar", "entities": {"director": null, "actor": null, "genres": null, "mood": null, "similar_to_movie": "Inception", "year_min": null, "year_max": null, "rating_min": null}, "explanation": "Finding movies similar to Inception (corrected spelling)", "unsupported_reason": ""}
 """
 
 
@@ -158,15 +230,15 @@ class GeminiQueryService:
         try:
             genai.configure(api_key=self._api_key)
             self._model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name="gemini-1.5-pro",  # Smarter model for better understanding
                 generation_config={
-                    "temperature": 0.1,
+                    "temperature": 0.2,  # Slightly higher for better creativity
                     "top_p": 0.95,
                     "top_k": 40,
                     "max_output_tokens": 1024,
                 }
             )
-            logger.info("Gemini model initialized successfully")
+            logger.info("Gemini Pro model initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini: {e}")
             self._model = None
@@ -364,15 +436,48 @@ class GeminiQueryService:
         for typo, correct in typo_corrections.items():
             query_lower = query_lower.replace(typo, correct)
         
-        # Check for unsupported patterns
+        # Check for mood-based queries FIRST - these are now supported!
+        detected_mood = None
+        for mood_keyword, genres in MOOD_TO_GENRES.items():
+            if mood_keyword in query_lower:
+                detected_mood = mood_keyword
+                entities["mood"] = mood_keyword
+                # Map mood to genres
+                entities["mood_genres"] = genres
+                query_type = QueryType.MOOD
+                break
+        
+        # Special patterns for mood detection
+        mood_patterns = [
+            (r"make me cry", "emotional"),
+            (r"make me laugh", "fun"),
+            (r"make me happy", "happy"),
+            (r"make me sad", "sad"),
+            (r"make me think", "thought provoking"),
+            (r"cheer me up", "uplifting"),
+            (r"something (scary|creepy)", "scary"),
+            (r"something (fun|funny)", "fun"),
+            (r"something (dark|intense)", "dark"),
+            (r"something (romantic|lovely)", "romantic"),
+            (r"something (exciting|thrilling)", "exciting"),
+            (r"something (relaxing|chill)", "relaxing"),
+        ]
+        
+        if not detected_mood:
+            for pattern, mood in mood_patterns:
+                if re.search(pattern, query_lower):
+                    detected_mood = mood
+                    entities["mood"] = mood
+                    entities["mood_genres"] = MOOD_TO_GENRES.get(mood, ["Drama"])
+                    query_type = QueryType.MOOD
+                    break
+        
+        # Check for truly unsupported patterns (plot-based, subjective quality)
         unsupported_patterns = [
-            (r"make me (cry|laugh|happy|sad)", "mood-based query"),
-            (r"feel.?good|uplifting|heartwarming", "mood-based query"),
             (r"twist ending|surprise ending", "plot-based query"),
             (r"underrated|overrated|hidden gem", "subjective quality query"),
-            (r"mind.?bending|thought.?provoking", "abstract descriptor query"),
+            (r"best movies ever|top \d+ movies|must.?watch", "subjective quality query"),
             (r"visually stunning|beautiful cinematography", "visual style query"),
-            (r"about (redemption|love|death|life)", "thematic query"),
         ]
         
         for pattern, reason in unsupported_patterns:
@@ -383,7 +488,7 @@ class GeminiQueryService:
                     parameters={},
                     explanation=f"Detected {reason}",
                     is_supported=False,
-                    unsupported_reason=f"I can't search by {reason}. Try searching by genre, director, actor, or year instead."
+                    unsupported_reason=f"I can't search by {reason}. Try searching by genre, mood, director, actor, or year instead."
                 )
         
         # Check for "directed by X" pattern first - extract any name after it
