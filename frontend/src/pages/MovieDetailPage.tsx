@@ -109,11 +109,17 @@ export function MovieDetailPage() {
             animate={{ opacity: 1, y: 0 }}
             className="relative"
           >
-            <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50">
+            <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50 bg-slate-800">
               <img
                 src={posterUrl}
                 alt={movie.title}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement
+                  if (!img.src.includes('imgur.com')) {
+                    img.src = 'https://i.imgur.com/xPgvLg9.png'
+                  }
+                }}
               />
             </div>
           </motion.div>
