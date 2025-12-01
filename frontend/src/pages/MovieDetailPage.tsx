@@ -74,7 +74,7 @@ export function MovieDetailPage() {
     : null
   const posterUrl = movie.poster_path
     ? `${TMDB_IMAGE_BASE}${POSTER_SIZE}${movie.poster_path}`
-    : 'https://via.placeholder.com/500x750/1e293b/64748b?text=No+Poster'
+    : 'https://i.imgur.com/xPgvLg9.png'
 
   return (
     <div className="min-h-screen">

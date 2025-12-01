@@ -94,16 +94,19 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
                   className="group relative overflow-hidden rounded-lg bg-slate-800/50 hover:bg-slate-700/50 transition-all hover:scale-105 hover:shadow-xl"
                 >
                   {/* Poster */}
-                  <div className="aspect-[2/3] overflow-hidden">
+                  <div className="aspect-[2/3] overflow-hidden bg-slate-800">
                     <img
                       src={movie.poster_path 
                         ? `https://image.tmdb.org/t/p/w300${movie.poster_path}`
-                        : 'https://via.placeholder.com/300x450/1e293b/64748b?text=No+Poster'}
+                        : 'https://i.imgur.com/xPgvLg9.png'}
                       alt={movie.title}
                       className="w-full h-full object-cover transition-transform group-hover:scale-110"
                       loading="lazy"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x450/1e293b/64748b?text=No+Poster'
+                        const img = e.target as HTMLImageElement
+                        if (!img.src.includes('imgur.com')) {
+                          img.src = 'https://i.imgur.com/xPgvLg9.png'
+                        }
                       }}
                     />
                   </div>

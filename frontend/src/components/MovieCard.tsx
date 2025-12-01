@@ -9,7 +9,7 @@ interface MovieCardProps {
 }
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
-const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/500x750/1e293b/64748b?text=No+Poster'
+const PLACEHOLDER_IMAGE = 'https://i.imgur.com/xPgvLg9.png'
 
 export function MovieCard({ movie, index = 0 }: MovieCardProps) {
   const posterUrl = movie.poster_path
