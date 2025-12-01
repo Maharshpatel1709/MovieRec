@@ -6,7 +6,7 @@ import type { Movie, Reasoning } from '../api/client'
 interface GraphNode {
   id: string
   label: string
-  type: 'Movie' | 'Genre' | 'Actor' | 'Director' | 'Source'
+  type: 'Movie' | 'Genre' | 'Source'
   x?: number
   y?: number
 }
@@ -26,8 +26,6 @@ const NODE_COLORS: Record<string, string> = {
   Source: '#f59e0b',  // amber - source movie
   Movie: '#6366f1',   // indigo - result movies
   Genre: '#22c55e',   // green
-  Actor: '#ec4899',   // pink
-  Director: '#3b82f6', // blue
 }
 
 const NODE_RADIUS = 28
@@ -64,8 +62,6 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
     // Group nodes by type
     const movieNodes = otherNodes.filter(n => n.type === 'Movie')
     const genreNodes = otherNodes.filter(n => n.type === 'Genre')
-    const actorNodes = otherNodes.filter(n => n.type === 'Actor')
-    const directorNodes = otherNodes.filter(n => n.type === 'Director')
     
     const positioned: GraphNode[] = []
     
@@ -86,7 +82,7 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
     })
     
     // Genres, actors, directors in outer ring
-    const outerNodes = [...genreNodes, ...actorNodes, ...directorNodes]
+    const outerNodes = [...genreNodes]
     const outerRadius = 170
     outerNodes.forEach((node, i) => {
       const angle = (2 * Math.PI * i) / Math.max(outerNodes.length, 1) - Math.PI / 2
@@ -208,7 +204,7 @@ function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { node
   }
   
   // Add recommended movies
-  const movies = recommendations?.slice(0, 5) || []
+  const movies = recommendations || []
   movies.forEach((movie, i) => {
     const movieId = `movie_${i}`
     if (!addedNodes.has(movieId)) {
@@ -221,7 +217,7 @@ function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { node
       }
       
       // Add genres
-      movie.genres?.slice(0, 2).forEach((genre, gi) => {
+      movie.genres?.forEach((genre, gi) => {
         const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
         if (!addedNodes.has(genreId)) {
           nodes.push({ id: genreId, label: genre, type: 'Genre' })
@@ -239,7 +235,7 @@ function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { node
     if (entities.director && typeof entities.director === 'string') {
       const directorId = `director_${entities.director.toLowerCase().replace(/\s/g, '_')}`
       if (!addedNodes.has(directorId)) {
-        nodes.push({ id: directorId, label: entities.director, type: 'Director' })
+        nodes.push({ id: directorId, label: entities.director, type: 'Source' })
         addedNodes.add(directorId)
         // Connect to movies
         movies.forEach((_, i) => {
@@ -252,7 +248,7 @@ function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { node
     if (entities.actor && typeof entities.actor === 'string') {
       const actorId = `actor_${entities.actor.toLowerCase().replace(/\s/g, '_')}`
       if (!addedNodes.has(actorId)) {
-        nodes.push({ id: actorId, label: entities.actor, type: 'Actor' })
+        nodes.push({ id: actorId, label: entities.actor, type: 'Source' })
         addedNodes.add(actorId)
         // Connect to movies
         movies.forEach((_, i) => {
@@ -261,27 +257,27 @@ function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { node
       }
     }
     
-    // Add genres from entities
-    if (entities.genres && Array.isArray(entities.genres)) {
-      entities.genres.slice(0, 3).forEach((genre: string) => {
-        const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
-        if (!addedNodes.has(genreId)) {
-          nodes.push({ id: genreId, label: genre, type: 'Genre' })
-          addedNodes.add(genreId)
-        }
-      })
-    }
+    // // Add genres from entities
+    // if (entities.genres && Array.isArray(entities.genres)) {
+    //   entities.genres.slice(0, 3).forEach((genre: string) => {
+    //     const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
+    //     if (!addedNodes.has(genreId)) {
+    //       nodes.push({ id: genreId, label: genre, type: 'Genre' })
+    //       addedNodes.add(genreId)
+    //     }
+    //   })
+    // }
     
-    // Add mood genres
-    if (entities.mood_genres && Array.isArray(entities.mood_genres)) {
-      entities.mood_genres.slice(0, 3).forEach((genre: string) => {
-        const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
-        if (!addedNodes.has(genreId)) {
-          nodes.push({ id: genreId, label: genre, type: 'Genre' })
-          addedNodes.add(genreId)
-        }
-      })
-    }
+    // // Add mood genres
+    // if (entities.mood_genres && Array.isArray(entities.mood_genres)) {
+    //   entities.mood_genres.slice(0, 3).forEach((genre: string) => {
+    //     const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
+    //     if (!addedNodes.has(genreId)) {
+    //       nodes.push({ id: genreId, label: genre, type: 'Genre' })
+    //       addedNodes.add(genreId)
+    //     }
+    //   })
+    // }
   }
   
   return { nodes, edges }
