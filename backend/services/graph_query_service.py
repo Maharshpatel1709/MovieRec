@@ -450,30 +450,25 @@ class GraphQueryService:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Find related movies based on shared actors, directors, or genres.
+        Find related movies based on shared genres.
+        Fast query - finds movies with at least 2 matching genres.
         """
         query = """
-        MATCH (m:Movie {movie_id: $movie_id})
+        // Get source movie's genres
+        MATCH (source:Movie {movie_id: $movie_id})-[:HAS_GENRE]->(g:Genre)
+        WITH source, collect(g.name) as source_genres
         
-        // Find movies with same director
-        OPTIONAL MATCH (m)<-[:DIRECTED]-(d:Director)-[:DIRECTED]->(related1:Movie)
-        WHERE related1.movie_id <> $movie_id
+        // Find movies with matching genres
+        MATCH (related:Movie)-[:HAS_GENRE]->(rg:Genre)
+        WHERE related.movie_id <> $movie_id
+          AND rg.name IN source_genres
         
-        // Find movies with same actors
-        OPTIONAL MATCH (m)<-[:ACTED_IN]-(a:Actor)-[:ACTED_IN]->(related2:Movie)
-        WHERE related2.movie_id <> $movie_id
+        // Count matches and get all genres
+        WITH related, count(DISTINCT rg) as match_count
+        WHERE match_count >= 2
         
-        // Find movies with same genre
-        OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)<-[:HAS_GENRE]-(related3:Movie)
-        WHERE related3.movie_id <> $movie_id
-        
-        WITH collect(DISTINCT related1) + collect(DISTINCT related2) + collect(DISTINCT related3) as allRelated
-        UNWIND allRelated as related
-        WITH DISTINCT related
-        WHERE related IS NOT NULL
-        
-        OPTIONAL MATCH (related)-[:HAS_GENRE]->(g:Genre)
-        WITH related, collect(DISTINCT g.name) as genres
+        OPTIONAL MATCH (related)-[:HAS_GENRE]->(allG:Genre)
+        WITH related, match_count, collect(DISTINCT allG.name) as genres
         
         RETURN 
             related.movie_id as movie_id,
@@ -482,8 +477,10 @@ class GraphQueryService:
             related.release_year as release_year,
             related.vote_average as vote_average,
             related.poster_path as poster_path,
-            genres
-        ORDER BY related.popularity DESC, related.vote_average DESC
+            related.popularity as popularity,
+            genres,
+            match_count
+        ORDER BY match_count DESC, related.popularity DESC
         LIMIT $limit
         """
         

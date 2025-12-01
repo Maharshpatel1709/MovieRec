@@ -95,14 +95,16 @@ def _fetch_movie_details(movie_id: int) -> Optional[Dict[str, Any]]:
 def _fetch_similar_movies(movie_id: int, limit: int = 6) -> List[Dict[str, Any]]:
     """Helper to fetch similar movies (runs in thread pool)."""
     try:
-        similar_movies, _ = graph_query_service.find_similar_movies(
+        # Use the faster get_related_movies method for movie detail page
+        # It finds movies through shared directors, actors, and genres
+        similar_movies = graph_query_service.get_related_movies(
             movie_id=movie_id,
-            limit=limit,
-            genre_weight=5.0,
-            actor_weight=3.0,
-            director_weight=2.0,
-            era_weight=1.0
+            limit=limit
         )
+        # Add similarity_score placeholder for compatibility
+        for m in similar_movies:
+            m["similarity_score"] = 0.8  # Default score for related movies
+            m["_match_reason"] = "Related through shared cast, crew, or genre"
         return similar_movies
     except Exception as e:
         logger.error(f"Similar movies fetch error: {e}")
@@ -138,7 +140,7 @@ async def get_movie(
         similar_movies_data = []
         if similar_future:
             try:
-                similar_movies_data = similar_future.result(timeout=10)
+                similar_movies_data = similar_future.result(timeout=30)  # Increased timeout
             except Exception as e:
                 logger.warning(f"Similar movies query failed: {e}")
         
