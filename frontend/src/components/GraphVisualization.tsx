@@ -1,17 +1,17 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
-import ForceGraph2D from 'react-force-graph-2d'
 import type { Movie, Reasoning } from '../api/client'
 
 interface GraphNode {
   id: string
   label: string
   type: 'Movie' | 'Genre' | 'Actor' | 'Director' | 'Source'
-  group?: number
+  x?: number
+  y?: number
 }
 
-interface GraphLink {
+interface GraphEdge {
   source: string
   target: string
   label: string
@@ -30,9 +30,12 @@ const NODE_COLORS: Record<string, string> = {
   Director: '#3b82f6', // blue
 }
 
+const NODE_RADIUS = 28
+
 export function GraphVisualization({ reasoning, recommendations }: GraphVisualizationProps) {
   const [isLoading, setIsLoading] = useState(true)
-  const [graphData, setGraphData] = useState<{ nodes: GraphNode[], links: GraphLink[] } | null>(null)
+  const [graphData, setGraphData] = useState<{ nodes: GraphNode[], edges: GraphEdge[] } | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
 
   // Build graph data from reasoning and recommendations
   useEffect(() => {
@@ -45,9 +48,61 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
     return () => clearTimeout(timer)
   }, [reasoning, recommendations])
 
+  // Calculate positions using a radial layout
+  const positionedNodes = useMemo(() => {
+    if (!graphData) return []
+    
+    const width = 600
+    const height = 400
+    const centerX = width / 2
+    const centerY = height / 2
+    
+    const nodes = [...graphData.nodes]
+    const sourceNode = nodes.find(n => n.type === 'Source')
+    const otherNodes = nodes.filter(n => n.type !== 'Source')
+    
+    // Group nodes by type
+    const movieNodes = otherNodes.filter(n => n.type === 'Movie')
+    const genreNodes = otherNodes.filter(n => n.type === 'Genre')
+    const actorNodes = otherNodes.filter(n => n.type === 'Actor')
+    const directorNodes = otherNodes.filter(n => n.type === 'Director')
+    
+    const positioned: GraphNode[] = []
+    
+    // Source at center
+    if (sourceNode) {
+      positioned.push({ ...sourceNode, x: centerX, y: centerY })
+    }
+    
+    // Movies in inner ring
+    const innerRadius = 100
+    movieNodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(movieNodes.length, 1) - Math.PI / 2
+      positioned.push({
+        ...node,
+        x: centerX + innerRadius * Math.cos(angle),
+        y: centerY + innerRadius * Math.sin(angle)
+      })
+    })
+    
+    // Genres, actors, directors in outer ring
+    const outerNodes = [...genreNodes, ...actorNodes, ...directorNodes]
+    const outerRadius = 170
+    outerNodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / Math.max(outerNodes.length, 1) - Math.PI / 2
+      positioned.push({
+        ...node,
+        x: centerX + outerRadius * Math.cos(angle),
+        y: centerY + outerRadius * Math.sin(angle)
+      })
+    })
+    
+    return positioned
+  }, [graphData])
+
   if (isLoading) {
     return (
-      <div className="w-full h-96 flex items-center justify-center bg-slate-900/50 rounded-xl">
+      <div className="w-full h-64 flex items-center justify-center bg-slate-900/50 rounded-xl">
         <div className="flex flex-col items-center gap-2">
           <Loader2 className="w-6 h-6 text-cinema-400 animate-spin" />
           <span className="text-xs text-slate-400">Building graph...</span>
@@ -56,7 +111,7 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
     )
   }
 
-  if (!graphData || graphData.nodes.length === 0) {
+  if (!graphData || positionedNodes.length === 0) {
     return null
   }
 
@@ -67,47 +122,61 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
       className="w-full bg-slate-900/50 rounded-xl overflow-hidden"
     >
       {/* Graph */}
-      <div className="relative" style={{ height: '500px' }}>
-        <ForceGraph2D
-          graphData={graphData}
-          nodeLabel={(node: GraphNode) => `${node.label} (${node.type})`}
-          nodeColor={(node: GraphNode) => NODE_COLORS[node.type] || '#64748b'}
-          nodeVal={(node: GraphNode) => {
-            // Size based on type
-            if (node.type === 'Source') return 12
-            if (node.type === 'Movie') return 10
-            return 8
-          }}
-          linkLabel={(link: GraphLink) => link.label}
-          linkColor={() => 'rgba(148, 163, 184, 0.4)'}
-          linkWidth={1.5}
-          linkDirectionalArrowLength={4}
-          linkDirectionalArrowRelPos={1}
-          backgroundColor="rgba(15, 23, 42, 0.5)"
-          nodeCanvasObject={(node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-            const label = node.label
-            const fontSize = 12 / globalScale
-            ctx.font = `${fontSize}px Sans-Serif`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillStyle = '#ffffff'
-            ctx.fillText(label, node.x || 0, (node.y || 0) + 20)
-          }}
-          onNodeDragEnd={(node: GraphNode) => {
-            node.fx = node.x
-            node.fy = node.y
-          }}
-          onNodeClick={(node: GraphNode) => {
-            // Pin/unpin node on click
-            if (node.fx !== undefined && node.fy !== undefined) {
-              node.fx = undefined
-              node.fy = undefined
-            } else {
-              node.fx = node.x
-              node.fy = node.y
-            }
-          }}
-        />
+      <div className="relative overflow-hidden" style={{ height: '400px' }}>
+        <svg
+          ref={svgRef}
+          viewBox="0 0 600 400"
+          className="w-full h-full"
+          style={{ background: 'radial-gradient(circle at center, rgba(30, 41, 59, 0.5) 0%, transparent 70%)' }}
+        >
+          {/* Edges */}
+          {graphData.edges.map((edge, i) => {
+            const source = positionedNodes.find(n => n.id === edge.source)
+            const target = positionedNodes.find(n => n.id === edge.target)
+            if (!source?.x || !target?.x) return null
+            
+            return (
+              <g key={i}>
+                <line
+                  x1={source.x}
+                  y1={source.y}
+                  x2={target.x}
+                  y2={target.y}
+                  stroke="rgba(148, 163, 184, 0.3)"
+                  strokeWidth="1"
+                />
+              </g>
+            )
+          })}
+          
+          {/* Nodes */}
+          {positionedNodes.map((node) => (
+            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
+              <motion.circle
+                r={NODE_RADIUS}
+                fill={NODE_COLORS[node.type] || '#64748b'}
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', delay: Math.random() * 0.3 }}
+                className="drop-shadow-lg"
+              />
+              <text
+                y={4}
+                textAnchor="middle"
+                className="fill-white text-[10px] font-semibold pointer-events-none"
+              >
+                {node.type[0]}
+              </text>
+              <text
+                y={NODE_RADIUS + 14}
+                textAnchor="middle"
+                className="fill-slate-300 text-[9px] pointer-events-none"
+              >
+                {truncate(node.label, 12)}
+              </text>
+            </g>
+          ))}
+        </svg>
       </div>
       
       {/* Legend */}
@@ -126,217 +195,100 @@ export function GraphVisualization({ reasoning, recommendations }: GraphVisualiz
   )
 }
 
-function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { nodes: GraphNode[], links: GraphLink[] } {
+function buildGraphData(reasoning: Reasoning, recommendations?: Movie[]): { nodes: GraphNode[], edges: GraphEdge[] } {
   const nodes: GraphNode[] = []
-  const links: GraphLink[] = []
-  const nodeMap = new Map<string, GraphNode>()
+  const edges: GraphEdge[] = []
+  const addedNodes = new Set<string>()
   
-  // Collect all movies (source + recommendations)
-  const allMovies: Array<{ id: string, title: string, genres?: string[], actors?: string[], directors?: string[] }> = []
-  
-  // Add source movie if exists
+  // Get source movie from similarity search
   const sourceMovie = reasoning.similarity_search?.source_movie
   if (sourceMovie) {
-    // Try to get source movie details from recommendations or reasoning
-    const sourceMovieData = recommendations?.find(m => 
-      m.title.toLowerCase().includes(sourceMovie.toLowerCase()) ||
-      sourceMovie.toLowerCase().includes(m.title.toLowerCase())
-    )
-    
-    allMovies.push({
-      id: 'source',
-      title: sourceMovie,
-      genres: sourceMovieData?.genres || [],
-      actors: [], // We don't have actor data for source in current structure
-      directors: [] // We don't have director data for source in current structure
-    })
+    nodes.push({ id: 'source', label: sourceMovie, type: 'Source' })
+    addedNodes.add('source')
   }
   
   // Add recommended movies
-  const movies = recommendations?.slice(0, 10) || []
+  const movies = recommendations?.slice(0, 5) || []
   movies.forEach((movie, i) => {
-    allMovies.push({
-      id: `movie_${i}`,
-      title: movie.title,
-      genres: movie.genres || [],
-      actors: [], // We don't have actor data in Movie type currently
-      directors: [] // We don't have director data in Movie type currently
-    })
-  })
-  
-  // Add movie nodes
-  allMovies.forEach(movie => {
-    if (!nodeMap.has(movie.id)) {
-      const node: GraphNode = {
-        id: movie.id,
-        label: movie.title,
-        type: movie.id === 'source' ? 'Source' : 'Movie'
+    const movieId = `movie_${i}`
+    if (!addedNodes.has(movieId)) {
+      nodes.push({ id: movieId, label: movie.title, type: 'Movie' })
+      addedNodes.add(movieId)
+      
+      // Connect to source if exists
+      if (sourceMovie) {
+        edges.push({ source: 'source', target: movieId, label: 'SIMILAR_TO' })
       }
-      nodes.push(node)
-      nodeMap.set(movie.id, node)
+      
+      // Add genres
+      movie.genres?.slice(0, 2).forEach((genre, gi) => {
+        const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
+        if (!addedNodes.has(genreId)) {
+          nodes.push({ id: genreId, label: genre, type: 'Genre' })
+          addedNodes.add(genreId)
+        }
+        edges.push({ source: movieId, target: genreId, label: 'HAS_GENRE' })
+      })
     }
   })
   
-  // Count genres across all movies (including source)
-  const genreCount = new Map<string, number>()
-  const genreToMovies = new Map<string, string[]>()
-  
-  allMovies.forEach(movie => {
-    movie.genres?.forEach(genre => {
-      const genreKey = genre.toLowerCase().trim()
-      genreCount.set(genreKey, (genreCount.get(genreKey) || 0) + 1)
-      
-      if (!genreToMovies.has(genreKey)) {
-        genreToMovies.set(genreKey, [])
-      }
-      genreToMovies.get(genreKey)!.push(movie.id)
-    })
-  })
-  
-  // Only add genres that appear in 2+ movies (including source)
-  genreCount.forEach((count, genreKey) => {
-    if (count >= 2) {
-      const genreLabel = genreToMovies.get(genreKey)?.[0] ? 
-        allMovies.find(m => m.id === genreToMovies.get(genreKey)![0])?.genres?.find(g => g.toLowerCase().trim() === genreKey) || genreKey :
-        genreKey
-      
-      const genreId = `genre_${genreKey.replace(/\s/g, '_')}`
-      if (!nodeMap.has(genreId)) {
-        const node: GraphNode = {
-          id: genreId,
-          label: genreLabel,
-          type: 'Genre'
-        }
-        nodes.push(node)
-        nodeMap.set(genreId, node)
-        
-        // Connect to all movies that have this genre
-        genreToMovies.get(genreKey)!.forEach(movieId => {
-          links.push({
-            source: movieId,
-            target: genreId,
-            label: 'HAS_GENRE'
-          })
+  // Add entities from Gemini analysis
+  const entities = reasoning.gemini_analysis?.entities
+  if (entities) {
+    // Add director
+    if (entities.director && typeof entities.director === 'string') {
+      const directorId = `director_${entities.director.toLowerCase().replace(/\s/g, '_')}`
+      if (!addedNodes.has(directorId)) {
+        nodes.push({ id: directorId, label: entities.director, type: 'Director' })
+        addedNodes.add(directorId)
+        // Connect to movies
+        movies.forEach((_, i) => {
+          edges.push({ source: `movie_${i}`, target: directorId, label: 'DIRECTED_BY' })
         })
       }
     }
-  })
-  
-  // Parse match_reason to extract shared actors/directors
-  // Format: "X shared actors: Name1, Name2; same director: Name"
-  const actorCount = new Map<string, number>()
-  const directorCount = new Map<string, number>()
-  const actorToMovies = new Map<string, string[]>()
-  const directorToMovies = new Map<string, string[]>()
-  
-  // Process all movies (including source if it exists)
-  const allMovieIds = allMovies.map(m => m.id)
-  
-  movies.forEach((movie, i) => {
-    const movieId = `movie_${i}`
-    const matchReason = (movie as any).match_reason || ''
     
-    // Parse "X shared actors: Name1, Name2"
-    const actorMatch = matchReason.match(/(\d+)\s+shared\s+actors?:\s*([^;]+)/i)
-    if (actorMatch) {
-      const actorNames = actorMatch[2].split(',').map(a => a.trim())
-      actorNames.forEach(actorName => {
-        const actorKey = actorName.toLowerCase().trim()
-        const currentCount = actorCount.get(actorKey) || 0
-        actorCount.set(actorKey, currentCount + 1)
-        
-        if (!actorToMovies.has(actorKey)) {
-          actorToMovies.set(actorKey, [])
-        }
-        actorToMovies.get(actorKey)!.push(movieId)
-        
-        // If source exists, also count it (shared actors means source + this movie)
-        if (sourceMovie && !actorToMovies.get(actorKey)!.includes('source')) {
-          actorCount.set(actorKey, actorCount.get(actorKey)! + 1)
-          actorToMovies.get(actorKey)!.push('source')
+    // Add actor
+    if (entities.actor && typeof entities.actor === 'string') {
+      const actorId = `actor_${entities.actor.toLowerCase().replace(/\s/g, '_')}`
+      if (!addedNodes.has(actorId)) {
+        nodes.push({ id: actorId, label: entities.actor, type: 'Actor' })
+        addedNodes.add(actorId)
+        // Connect to movies
+        movies.forEach((_, i) => {
+          edges.push({ source: actorId, target: `movie_${i}`, label: 'ACTED_IN' })
+        })
+      }
+    }
+    
+    // Add genres from entities
+    if (entities.genres && Array.isArray(entities.genres)) {
+      entities.genres.slice(0, 3).forEach((genre: string) => {
+        const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
+        if (!addedNodes.has(genreId)) {
+          nodes.push({ id: genreId, label: genre, type: 'Genre' })
+          addedNodes.add(genreId)
         }
       })
     }
     
-    // Parse "same director: Name"
-    const directorMatch = matchReason.match(/same\s+director:\s*([^;]+)/i)
-    if (directorMatch) {
-      const directorName = directorMatch[1].trim()
-      const directorKey = directorName.toLowerCase().trim()
-      const currentCount = directorCount.get(directorKey) || 0
-      directorCount.set(directorKey, currentCount + 1)
-      
-      if (!directorToMovies.has(directorKey)) {
-        directorToMovies.set(directorKey, [])
-      }
-      directorToMovies.get(directorKey)!.push(movieId)
-      
-      // If source exists, also count it
-      if (sourceMovie && !directorToMovies.get(directorKey)!.includes('source')) {
-        directorCount.set(directorKey, directorCount.get(directorKey)! + 1)
-        directorToMovies.get(directorKey)!.push('source')
-      }
-    }
-  })
-  
-  // Only add actors that appear in 2+ movies (including source)
-  actorCount.forEach((count, actorKey) => {
-    if (count >= 2) {
-      // Capitalize properly
-      const actorLabel = actorKey.split(' ').map(w => 
-        w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-      ).join(' ')
-      
-      const actorId = `actor_${actorKey.replace(/\s/g, '_')}`
-      if (!nodeMap.has(actorId)) {
-        const node: GraphNode = {
-          id: actorId,
-          label: actorLabel,
-          type: 'Actor'
+    // Add mood genres
+    if (entities.mood_genres && Array.isArray(entities.mood_genres)) {
+      entities.mood_genres.slice(0, 3).forEach((genre: string) => {
+        const genreId = `genre_${genre.toLowerCase().replace(/\s/g, '_')}`
+        if (!addedNodes.has(genreId)) {
+          nodes.push({ id: genreId, label: genre, type: 'Genre' })
+          addedNodes.add(genreId)
         }
-        nodes.push(node)
-        nodeMap.set(actorId, node)
-        
-        // Connect to all movies that have this actor
-        actorToMovies.get(actorKey)!.forEach(movieId => {
-          links.push({
-            source: actorId,
-            target: movieId,
-            label: 'ACTED_IN'
-          })
-        })
-      }
+      })
     }
-  })
+  }
   
-  // Only add directors that appear in 2+ movies (including source)
-  directorCount.forEach((count, directorKey) => {
-    if (count >= 2) {
-      const directorLabel = directorKey.split(' ').map(w => 
-        w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-      ).join(' ')
-      
-      const directorId = `director_${directorKey.replace(/\s/g, '_')}`
-      if (!nodeMap.has(directorId)) {
-        const node: GraphNode = {
-          id: directorId,
-          label: directorLabel,
-          type: 'Director'
-        }
-        nodes.push(node)
-        nodeMap.set(directorId, node)
-        
-        // Connect to all movies that have this director
-        directorToMovies.get(directorKey)!.forEach(movieId => {
-          links.push({
-            source: directorId,
-            target: movieId,
-            label: 'DIRECTED'
-          })
-        })
-      }
-    }
-  })
-  
-  return { nodes, links }
+  return { nodes, edges }
 }
+
+function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str
+  return str.slice(0, maxLen - 2) + '...'
+}
+
