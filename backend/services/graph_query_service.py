@@ -132,19 +132,19 @@ class GraphQueryService:
         year_min: Optional[int] = None,
         year_max: Optional[int] = None,
         rating_min: Optional[float] = None,
-        use_and_logic: bool = True
+        min_match: int = 2
     ) -> List[Dict[str, Any]]:
         """
         Find movies by genre(s).
         
         Logic:
-        - First 2 genres: AND (movie must have both)
-        - Remaining genres: OR (movie can have any of the rest)
+        - 1 genre: Movie must have that genre
+        - 2+ genres: Movie must have at least `min_match` (default 2) of the genres
         
-        Example: ["Horror", "Thriller", "Crime", "Drama"]
-        → Movie must have Horror AND Thriller AND (Crime OR Drama)
+        Example: ["Horror", "Thriller", "Crime", "Drama"] with min_match=2
+        → Movie must have at least 2 of these genres
         """
-        params = {"limit": limit}
+        params = {"genres": genres, "limit": limit}
         
         # Build additional WHERE clauses for year/rating filters
         additional_where = []
@@ -160,49 +160,55 @@ class GraphQueryService:
         
         additional_clause = f"AND {' AND '.join(additional_where)}" if additional_where else ""
         
-        # Build genre conditions: AND for first 2, OR for rest
-        genre_conditions = []
-        
-        # First 2 genres use AND (required)
-        required_genres = genres[:2]
-        optional_genres = genres[2:] if len(genres) > 2 else []
-        
-        params["required_genres"] = required_genres
-        
-        if len(required_genres) == 1:
-            # Only 1 genre - just match it
-            genre_condition = "(m)-[:HAS_GENRE]->(:Genre {name: $required_genres[0]})"
-        elif len(required_genres) >= 2:
-            # 2+ genres - AND logic for first 2
-            genre_condition = "ALL(genre IN $required_genres WHERE (m)-[:HAS_GENRE]->(:Genre {name: genre}))"
+        if len(genres) == 1:
+            # Single genre - just match it
+            query = f"""
+            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
+            WHERE g.name = $genres[0]
+            {additional_clause}
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(allG:Genre)
+            WITH m, collect(DISTINCT allG.name) as genres
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres
+            ORDER BY m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
         else:
-            genre_condition = "true"
+            # Multiple genres - movie must have at least min_match genres
+            # Use min of (min_match, len(genres)) to handle edge cases
+            actual_min = min(min_match, len(genres))
+            params["min_match"] = actual_min
+            
+            query = f"""
+            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
+            WHERE g.name IN $genres
+            {additional_clause}
+            WITH m, collect(DISTINCT g.name) as matched_genres
+            WHERE size(matched_genres) >= $min_match
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(allG:Genre)
+            WITH m, matched_genres, collect(DISTINCT allG.name) as genres
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres,
+                size(matched_genres) as match_count
+            ORDER BY match_count DESC, m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
         
-        # Add OR condition for optional genres (if any)
-        if optional_genres:
-            params["optional_genres"] = optional_genres
-            genre_condition = f"({genre_condition}) AND ANY(genre IN $optional_genres WHERE (m)-[:HAS_GENRE]->(:Genre {{name: genre}}))"
-        
-        query = f"""
-        MATCH (m:Movie)
-        WHERE {genre_condition}
-        {additional_clause}
-        OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
-        WITH m, collect(DISTINCT g.name) as genres
-        RETURN 
-            m.movie_id as movie_id,
-            m.title as title,
-            m.overview as overview,
-            m.release_year as release_year,
-            m.vote_average as vote_average,
-            m.poster_path as poster_path,
-            m.popularity as popularity,
-            genres
-        ORDER BY m.popularity DESC, m.vote_average DESC
-        LIMIT $limit
-        """
-        
-        logger.info(f"Genre search: required={required_genres}, optional={optional_genres}")
+        logger.info(f"Genre search: genres={genres}, min_match={min_match if len(genres) > 1 else 1}")
         
         try:
             with neo4j_service._driver.session() as session:
@@ -222,7 +228,7 @@ class GraphQueryService:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Find movies within a year range. Uses AND logic for genres if provided.
+        Find movies within a year range. Movie must have at least 2 of the genres if provided.
         """
         params = {
             "year_min": year_min,
@@ -230,15 +236,41 @@ class GraphQueryService:
             "limit": limit
         }
         
-        if genres:
-            # AND logic: movie must have ALL requested genres
+        if genres and len(genres) > 1:
+            # Multiple genres: movie must have at least 2
+            params["genres"] = genres
+            params["min_match"] = min(2, len(genres))
             query = """
-            MATCH (m:Movie)
+            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
             WHERE m.release_year >= $year_min 
               AND m.release_year <= $year_max
-              AND ALL(genre IN $genres WHERE (m)-[:HAS_GENRE]->(:Genre {name: genre}))
-            OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
-            WITH m, collect(DISTINCT g.name) as genres
+              AND g.name IN $genres
+            WITH m, collect(DISTINCT g.name) as matched_genres
+            WHERE size(matched_genres) >= $min_match
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(allG:Genre)
+            WITH m, collect(DISTINCT allG.name) as genres, size(matched_genres) as match_count
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres
+            ORDER BY match_count DESC, m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
+        elif genres and len(genres) == 1:
+            # Single genre - just match it
+            params["genre"] = genres[0]
+            query = """
+            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
+            WHERE m.release_year >= $year_min 
+              AND m.release_year <= $year_max
+              AND g.name = $genre
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(allG:Genre)
+            WITH m, collect(DISTINCT allG.name) as genres
             RETURN 
                 m.movie_id as movie_id,
                 m.title as title,
@@ -251,7 +283,6 @@ class GraphQueryService:
             ORDER BY m.popularity DESC, m.vote_average DESC
             LIMIT $limit
             """
-            params["genres"] = genres
         else:
             query = """
             MATCH (m:Movie)
@@ -293,7 +324,7 @@ class GraphQueryService:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Combined search with multiple filters. Uses AND logic for genres.
+        Combined search with multiple filters. Movie must have at least 2 of the genres.
         """
         match_clauses = ["MATCH (m:Movie)"]
         where_clauses = []
@@ -311,11 +342,6 @@ class GraphQueryService:
             where_clauses.append("a.name =~ $actor_pattern")
             params["actor_pattern"] = f"(?i).*{actor}.*"
         
-        # Add genre match with AND logic - movie must have ALL genres
-        if genres:
-            where_clauses.append("ALL(genre IN $genres WHERE (m)-[:HAS_GENRE]->(:Genre {name: genre}))")
-            params["genres"] = genres
-        
         # Add year filters
         if year_min:
             where_clauses.append("m.release_year >= $year_min")
@@ -332,25 +358,81 @@ class GraphQueryService:
         # Build query
         where_clause = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         
-        query = f"""
-        {' '.join(match_clauses)}
-        {where_clause}
-        OPTIONAL MATCH (m)-[:HAS_GENRE]->(genre:Genre)
-        OPTIONAL MATCH (dir:Director)-[:DIRECTED]->(m)
-        WITH m, collect(DISTINCT genre.name) as genres, collect(DISTINCT dir.name) as directors
-        RETURN 
-            m.movie_id as movie_id,
-            m.title as title,
-            m.overview as overview,
-            m.release_year as release_year,
-            m.vote_average as vote_average,
-            m.poster_path as poster_path,
-            m.popularity as popularity,
-            genres,
-            directors
-        ORDER BY m.popularity DESC, m.vote_average DESC
-        LIMIT $limit
-        """
+        # Handle genres with "at least 2 matching" logic
+        if genres and len(genres) > 1:
+            params["genres"] = genres
+            params["min_match"] = min(2, len(genres))
+            
+            query = f"""
+            {' '.join(match_clauses)}
+            {where_clause}
+            WITH m
+            MATCH (m)-[:HAS_GENRE]->(g:Genre)
+            WHERE g.name IN $genres
+            WITH m, collect(DISTINCT g.name) as matched_genres
+            WHERE size(matched_genres) >= $min_match
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(genre:Genre)
+            OPTIONAL MATCH (dir:Director)-[:DIRECTED]->(m)
+            WITH m, collect(DISTINCT genre.name) as genres, collect(DISTINCT dir.name) as directors
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres,
+                directors
+            ORDER BY m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
+        elif genres and len(genres) == 1:
+            params["genre"] = genres[0]
+            if where_clauses:
+                where_clause = f"WHERE {' AND '.join(where_clauses)} AND (m)-[:HAS_GENRE]->(:Genre {{name: $genre}})"
+            else:
+                where_clause = "WHERE (m)-[:HAS_GENRE]->(:Genre {name: $genre})"
+            
+            query = f"""
+            {' '.join(match_clauses)}
+            {where_clause}
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(genre:Genre)
+            OPTIONAL MATCH (dir:Director)-[:DIRECTED]->(m)
+            WITH m, collect(DISTINCT genre.name) as genres, collect(DISTINCT dir.name) as directors
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres,
+                directors
+            ORDER BY m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
+        else:
+            query = f"""
+            {' '.join(match_clauses)}
+            {where_clause}
+            OPTIONAL MATCH (m)-[:HAS_GENRE]->(genre:Genre)
+            OPTIONAL MATCH (dir:Director)-[:DIRECTED]->(m)
+            WITH m, collect(DISTINCT genre.name) as genres, collect(DISTINCT dir.name) as directors
+            RETURN 
+                m.movie_id as movie_id,
+                m.title as title,
+                m.overview as overview,
+                m.release_year as release_year,
+                m.vote_average as vote_average,
+                m.poster_path as poster_path,
+                m.popularity as popularity,
+                genres,
+                directors
+            ORDER BY m.popularity DESC, m.vote_average DESC
+            LIMIT $limit
+            """
         
         try:
             with neo4j_service._driver.session() as session:

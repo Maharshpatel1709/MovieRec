@@ -159,31 +159,31 @@ class SmartRAGService:
                     lambda a=actor, l=limit: graph_query_service.search_by_actor(a, limit=l)
                 )
             elif mood_genres and genres:
-                # BOTH mood AND explicit genres - combine all genres with AND
+                # BOTH mood AND explicit genres - combine all genres
                 combined_genres = list(set(mood_genres + genres))
-                logger.info(f"Combined search: mood genres {mood_genres} + explicit genres {genres} = {combined_genres} (AND logic)")
+                logger.info(f"Combined search: mood genres {mood_genres} + explicit genres {genres} = {combined_genres}")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=combined_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
+                        g, limit=l, year_min=ymin, year_max=ymax, min_match=2
                     )
                 )
             elif mood_genres:
-                # Mood search - use AND logic (scary = Horror AND Thriller)
-                logger.info(f"Mood search with genres: {mood_genres} (AND logic)")
+                # Mood search - movie must have at least 2 of the mood genres
+                logger.info(f"Mood search with genres: {mood_genres} (min 2 match)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=mood_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
+                        g, limit=l, year_min=ymin, year_max=ymax, min_match=2
                     )
                 )
             elif genres:
-                # Explicit genres - use AND logic (action comedy = Action AND Comedy)
-                logger.info(f"Genre search with genres: {genres} (AND logic)")
+                # Explicit genres - movie must have at least 2 of the genres
+                logger.info(f"Genre search with genres: {genres} (min 2 match)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
+                        g, limit=l, year_min=ymin, year_max=ymax, min_match=2
                     )
                 )
             elif year_min or year_max:
