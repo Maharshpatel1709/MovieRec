@@ -158,20 +158,33 @@ class SmartRAGService:
                     self._executor,
                     lambda a=actor, l=limit: graph_query_service.search_by_actor(a, limit=l)
                 )
+            elif mood_genres and genres:
+                # BOTH mood AND explicit genres - use AND logic between them
+                # Movie must have ALL explicit genres AND at least one mood genre
+                combined_genres = list(set(genres))  # Explicit genres with AND
+                logger.info(f"Combined search: explicit genres {genres} (AND) + mood genres {mood_genres}")
+                results = await loop.run_in_executor(
+                    self._executor,
+                    lambda g=combined_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
+                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
+                    )
+                )
             elif mood_genres:
-                # Mood-based search - use mood genres
-                logger.info(f"Executing mood genre search with genres: {mood_genres}")
+                # Mood-only search - use OR logic (scary = Horror OR Thriller)
+                logger.info(f"Mood search with genres: {mood_genres} (OR logic)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=mood_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax
+                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=False
                     )
                 )
             elif genres:
+                # Explicit genres - use AND logic (action comedy = Action AND Comedy)
+                logger.info(f"Genre search with genres: {genres} (AND logic)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax
+                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
                     )
                 )
             elif year_min or year_max:
