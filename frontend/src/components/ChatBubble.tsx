@@ -87,7 +87,7 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
               {recommendations.length} movies found
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {recommendations.slice(0, 8).map((movie) => (
+              {recommendations.slice(0, 10).map((movie) => (
                 <Link
                   key={movie.movie_id}
                   to={`/movie/${movie.movie_id}`}
@@ -95,18 +95,17 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
                 >
                   {/* Poster */}
                   <div className="aspect-[2/3] overflow-hidden">
-                    {movie.poster_path ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
-                        alt={movie.title}
-                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                        <Film className="w-8 h-8 text-slate-600" />
-                      </div>
-                    )}
+                    <img
+                      src={movie.poster_path 
+                        ? `https://image.tmdb.org/t/p/w300${movie.poster_path}`
+                        : 'https://via.placeholder.com/300x450/1e293b/64748b?text=No+Poster'}
+                      alt={movie.title}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x450/1e293b/64748b?text=No+Poster'
+                      }}
+                    />
                   </div>
                   
                   {/* Overlay with info */}
@@ -115,16 +114,6 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
                       <h4 className="text-xs font-medium text-white truncate">
                         {movie.title}
                       </h4>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-[10px] text-slate-400">
-                          {movie.release_year || 'N/A'}
-                        </span>
-                        {movie.vote_average && movie.vote_average > 0 && (
-                          <span className="text-[10px] text-yellow-400 flex items-center gap-0.5">
-                            ★ {movie.vote_average.toFixed(1)}
-                          </span>
-                        )}
-                      </div>
                       {movie.genres && movie.genres.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {movie.genres.slice(0, 2).map((genre) => (

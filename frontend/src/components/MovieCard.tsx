@@ -6,18 +6,16 @@ import type { Movie, SearchResult } from '../api/client'
 interface MovieCardProps {
   movie: Movie | SearchResult
   index?: number
-  showScore?: boolean
 }
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/500x750/1e293b/64748b?text=No+Poster'
 
-export function MovieCard({ movie, index = 0, showScore = false }: MovieCardProps) {
+export function MovieCard({ movie, index = 0 }: MovieCardProps) {
   const posterUrl = movie.poster_path
     ? `${TMDB_IMAGE_BASE}${movie.poster_path}`
     : PLACEHOLDER_IMAGE
 
-  const score = 'score' in movie ? movie.score : 'similarity_score' in movie ? movie.similarity_score : null
   const rating = movie.vote_average
 
   return (
@@ -44,18 +42,6 @@ export function MovieCard({ movie, index = 0, showScore = false }: MovieCardProp
           
           {/* Overlay gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          
-          {/* Score badge */}
-          {showScore && score !== null && (
-            <div className="absolute top-3 right-3">
-              <div className="glass rounded-full px-2.5 py-1 flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-cinema-500" />
-                <span className="text-xs font-semibold text-white">
-                  {(score * 100).toFixed(0)}%
-                </span>
-              </div>
-            </div>
-          )}
           
           {/* Rating badge */}
           {rating && rating > 0 && (
@@ -102,13 +88,6 @@ export function MovieCard({ movie, index = 0, showScore = false }: MovieCardProp
                 </span>
               )}
             </div>
-          )}
-
-          {/* Explanation */}
-          {'explanation' in movie && movie.explanation && (
-            <p className="mt-3 text-xs text-slate-400 line-clamp-2">
-              {movie.explanation}
-            </p>
           )}
         </div>
       </Link>
