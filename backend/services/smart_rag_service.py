@@ -334,56 +334,30 @@ Try one of the suggestions below!"""
         parsed: ParsedQuery,
         similarity_details: Dict = None
     ) -> str:
-        """Build a natural language answer."""
+        """Build a concise natural language answer - movie details shown in cards."""
         entities = parsed.extracted_entities
-        parts = []
+        count = len(results)
         
-        # Opening based on query type
+        # Build a short, clean response - movies will be shown as cards
         if parsed.query_type == QueryType.SIMILAR:
             source_movie = similarity_details.get("source_movie", entities.get("similar_to_movie", ""))
-            parts.append(f"Here are movies similar to **{source_movie}**")
+            return f"Found **{count} movies** similar to **{source_movie}**! 🎬"
         elif entities.get("director"):
-            parts.append(f"Here are movies directed by **{entities['director']}**")
+            return f"Found **{count} movies** by **{entities['director']}**! 🎬"
         elif entities.get("actor"):
-            parts.append(f"Here are movies featuring **{entities['actor']}**")
+            return f"Found **{count} movies** featuring **{entities['actor']}**! 🎬"
         elif parsed.query_type == QueryType.MOOD or entities.get("mood"):
             mood = entities.get("mood", "your mood")
-            mood_genres = entities.get("mood_genres") or MOOD_TO_GENRES.get(mood.lower().replace("-", " "), [])
-            genres_str = ", ".join(mood_genres[:3]) if mood_genres else "matching"
-            parts.append(f"For a **{mood}** mood, here are some **{genres_str}** movies")
+            return f"Found **{count} {mood}** movies for you! 🎬"
         elif entities.get("genres"):
-            genres = ", ".join(entities["genres"])
-            parts.append(f"Here are some great **{genres}** movies")
-        else:
-            parts.append("Based on your query, I found these recommendations")
-        
-        # Add time context
-        if entities.get("year_min") and entities.get("year_max"):
-            if entities["year_min"] == entities["year_max"]:
-                parts.append(f"from {entities['year_min']}")
-            else:
-                parts.append(f"from {entities['year_min']}-{entities['year_max']}")
+            genres = " & ".join(entities["genres"][:2])
+            return f"Found **{count} {genres}** movies! 🎬"
+        elif entities.get("year_min") and entities.get("year_max"):
+            return f"Found **{count} movies** from **{entities['year_min']}-{entities['year_max']}**! 🎬"
         elif entities.get("year_min"):
-            parts.append(f"from {entities['year_min']} onwards")
-        
-        # Movie list
-        top_movies = results[:3]
-        if top_movies:
-            movie_list = ", ".join([f"**{m['title']}**" for m in top_movies])
-            if len(results) > 3:
-                parts.append(f": {movie_list}, and {len(results) - 3} more")
-            else:
-                parts.append(f": {movie_list}")
-        
-        # Add detail about why top movie matched (for similarity)
-        if top_movies and parsed.query_type == QueryType.SIMILAR:
-            top = top_movies[0]
-            if top.get("_match_reason"):
-                parts.append(f".\n\n**{top['title']}** matched because: {top['_match_reason']}")
-        elif top_movies and top_movies[0].get("overview"):
-            parts.append(f".\n\n**{top_movies[0]['title']}**: {top_movies[0]['overview'][:150]}...")
-        
-        return " ".join(parts) + "."
+            return f"Found **{count} movies** from **{entities['year_min']}** onwards! 🎬"
+        else:
+            return f"Found **{count} movies** for you! 🎬"
     
     def _generate_no_results_message(self, parsed: ParsedQuery) -> str:
         """Generate message when no results found."""

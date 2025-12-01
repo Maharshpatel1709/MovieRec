@@ -79,27 +79,72 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
           )}
         </div>
 
-        {/* Recommendations */}
+        {/* Movie Cards Grid */}
         {!isUser && recommendations && recommendations.length > 0 && (
-          <div className="w-full max-w-lg">
-            <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
+          <div className="w-full max-w-2xl">
+            <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
               <Film className="w-3 h-3" />
-              Recommended movies
+              {recommendations.length} movies found
             </p>
-            <div className="flex flex-wrap gap-2">
-              {recommendations.slice(0, 4).map((movie) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {recommendations.slice(0, 8).map((movie) => (
                 <Link
                   key={movie.movie_id}
                   to={`/movie/${movie.movie_id}`}
-                  className="glass px-3 py-2 rounded-lg hover:bg-slate-700/50 transition-colors group flex items-center gap-2"
+                  className="group relative overflow-hidden rounded-lg bg-slate-800/50 hover:bg-slate-700/50 transition-all hover:scale-105 hover:shadow-xl"
                 >
-                  <span className="text-sm text-slate-300 group-hover:text-white transition-colors">
-                    {movie.title}
-                  </span>
-                  {movie.vote_average && (
-                    <span className="text-xs text-yellow-400">
-                      ★ {movie.vote_average.toFixed(1)}
-                    </span>
+                  {/* Poster */}
+                  <div className="aspect-[2/3] overflow-hidden">
+                    {movie.poster_path ? (
+                      <img
+                        src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
+                        alt={movie.title}
+                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+                        <Film className="w-8 h-8 text-slate-600" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Overlay with info */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-100">
+                    <div className="absolute bottom-0 left-0 right-0 p-2">
+                      <h4 className="text-xs font-medium text-white truncate">
+                        {movie.title}
+                      </h4>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-slate-400">
+                          {movie.release_year || 'N/A'}
+                        </span>
+                        {movie.vote_average && movie.vote_average > 0 && (
+                          <span className="text-[10px] text-yellow-400 flex items-center gap-0.5">
+                            ★ {movie.vote_average.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      {movie.genres && movie.genres.length > 0 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {movie.genres.slice(0, 2).map((genre) => (
+                            <span
+                              key={genre}
+                              className="text-[9px] px-1.5 py-0.5 bg-cinema-500/30 text-cinema-300 rounded"
+                            >
+                              {genre}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Match reason tooltip on hover */}
+                  {movie.match_reason && (
+                    <div className="absolute top-0 left-0 right-0 p-2 bg-black/80 text-[9px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {movie.match_reason}
+                    </div>
                   )}
                 </Link>
               ))}
