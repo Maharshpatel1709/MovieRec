@@ -137,12 +137,14 @@ class GraphQueryService:
         """
         Find movies by genre(s).
         
-        Args:
-            genres: List of genre names
-            use_and_logic: If True, movie must have ALL genres (AND). 
-                          If False, movie must have ANY genre (OR) - used for mood searches.
+        Logic:
+        - First 2 genres: AND (movie must have both)
+        - Remaining genres: OR (movie can have any of the rest)
+        
+        Example: ["Horror", "Thriller", "Crime", "Drama"]
+        → Movie must have Horror AND Thriller AND (Crime OR Drama)
         """
-        params = {"genres": genres, "limit": limit}
+        params = {"limit": limit}
         
         # Build additional WHERE clauses for year/rating filters
         additional_where = []
@@ -158,45 +160,49 @@ class GraphQueryService:
         
         additional_clause = f"AND {' AND '.join(additional_where)}" if additional_where else ""
         
-        if use_and_logic:
-            # AND logic: movie must match ALL requested genres
-            query = f"""
-            MATCH (m:Movie)
-            WHERE ALL(genre IN $genres WHERE (m)-[:HAS_GENRE]->(:Genre {{name: genre}}))
-            {additional_clause}
-            OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
-            WITH m, collect(DISTINCT g.name) as genres
-            RETURN 
-                m.movie_id as movie_id,
-                m.title as title,
-                m.overview as overview,
-                m.release_year as release_year,
-                m.vote_average as vote_average,
-                m.poster_path as poster_path,
-                m.popularity as popularity,
-                genres
-            ORDER BY m.popularity DESC, m.vote_average DESC
-            LIMIT $limit
-            """
+        # Build genre conditions: AND for first 2, OR for rest
+        genre_conditions = []
+        
+        # First 2 genres use AND (required)
+        required_genres = genres[:2]
+        optional_genres = genres[2:] if len(genres) > 2 else []
+        
+        params["required_genres"] = required_genres
+        
+        if len(required_genres) == 1:
+            # Only 1 genre - just match it
+            genre_condition = "(m)-[:HAS_GENRE]->(:Genre {name: $required_genres[0]})"
+        elif len(required_genres) >= 2:
+            # 2+ genres - AND logic for first 2
+            genre_condition = "ALL(genre IN $required_genres WHERE (m)-[:HAS_GENRE]->(:Genre {name: genre}))"
         else:
-            # OR logic: movie must match ANY requested genre (for mood searches)
-            query = f"""
-            MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
-            WHERE g.name IN $genres
-            {additional_clause}
-            WITH m, collect(DISTINCT g.name) as genres
-            RETURN 
-                m.movie_id as movie_id,
-                m.title as title,
-                m.overview as overview,
-                m.release_year as release_year,
-                m.vote_average as vote_average,
-                m.poster_path as poster_path,
-                m.popularity as popularity,
-                genres
-            ORDER BY m.popularity DESC, m.vote_average DESC
-            LIMIT $limit
-            """
+            genre_condition = "true"
+        
+        # Add OR condition for optional genres (if any)
+        if optional_genres:
+            params["optional_genres"] = optional_genres
+            genre_condition = f"({genre_condition}) AND ANY(genre IN $optional_genres WHERE (m)-[:HAS_GENRE]->(:Genre {{name: genre}}))"
+        
+        query = f"""
+        MATCH (m:Movie)
+        WHERE {genre_condition}
+        {additional_clause}
+        OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
+        WITH m, collect(DISTINCT g.name) as genres
+        RETURN 
+            m.movie_id as movie_id,
+            m.title as title,
+            m.overview as overview,
+            m.release_year as release_year,
+            m.vote_average as vote_average,
+            m.poster_path as poster_path,
+            m.popularity as popularity,
+            genres
+        ORDER BY m.popularity DESC, m.vote_average DESC
+        LIMIT $limit
+        """
+        
+        logger.info(f"Genre search: required={required_genres}, optional={optional_genres}")
         
         try:
             with neo4j_service._driver.session() as session:
