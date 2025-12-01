@@ -81,12 +81,12 @@ export function ChatBubble({ message, isUser, recommendations, reasoning, isTypi
 
         {/* Movie Cards Grid */}
         {!isUser && recommendations && recommendations.length > 0 && (
-          <div className="w-full max-w-2xl">
+          <div className="w-full max-w-4xl">
             <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
               <Film className="w-3 h-3" />
               {recommendations.length} movies found
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {recommendations.slice(0, 8).map((movie) => (
                 <Link
                   key={movie.movie_id}

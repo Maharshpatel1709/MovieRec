@@ -106,7 +106,7 @@ export function ChatPage() {
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col">
       {/* Chat Container */}
-      <div className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
+      <div className="flex-1 overflow-hidden flex flex-col max-w-6xl mx-auto w-full px-4">
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.length === 0 ? (
