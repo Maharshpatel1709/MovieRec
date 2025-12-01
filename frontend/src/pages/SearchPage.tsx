@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Film, Sparkles, TrendingUp, SlidersHorizontal, Star, Clock, Gem, Clapperboard } from 'lucide-react'
@@ -32,13 +32,50 @@ export function SearchPage() {
   const [activeCategory, setActiveCategory] = useState<ExploreCategory>('popular')
   const [searchType, setSearchType] = useState<string>('')
   const [detectedEntities, setDetectedEntities] = useState<Record<string, unknown> | null>(null)
+  const isInitialMount = useRef(true)
 
   const initialQuery = searchParams.get('q') || ''
+  const urlGenres = searchParams.get('genres')?.split(',').filter(Boolean) || []
+  const urlYearMin = searchParams.get('year_min') || ''
+  const urlYearMax = searchParams.get('year_max') || ''
+  const urlRatingMin = searchParams.get('rating_min') || ''
 
-  // Initial search from URL
+  // Initialize filters from URL params and perform initial search
   useEffect(() => {
+    const hasFilters = urlGenres.length > 0 || urlYearMin || urlYearMax || urlRatingMin
+    
+    if (urlGenres.length > 0) {
+      setSelectedGenres(urlGenres)
+      setSearchMode('filter')
+    }
+    if (urlYearMin) setYearRange(prev => ({ ...prev, min: urlYearMin }))
+    if (urlYearMax) setYearRange(prev => ({ ...prev, max: urlYearMax }))
+    if (urlRatingMin) setMinRating(urlRatingMin)
+    
+    // Perform initial search
     if (initialQuery) {
       handleSearch(initialQuery)
+    } else if (hasFilters) {
+      // If URL has filters but no query, search with filters
+      setLoading(true)
+      setHasSearched(true)
+      setActiveCategory('' as ExploreCategory)
+      
+      searchApi.movies({
+        query: '',
+        genres: urlGenres.join(',') || undefined,
+        year_min: urlYearMin ? parseInt(urlYearMin) : undefined,
+        year_max: urlYearMax ? parseInt(urlYearMax) : undefined,
+        rating_min: urlRatingMin ? parseFloat(urlRatingMin) : undefined,
+        limit: 20,
+      }).then(data => {
+        setResults(data.results)
+        setSearchType('filter')
+      }).catch(error => {
+        console.error('Filter search failed:', error)
+      }).finally(() => {
+        setLoading(false)
+      })
     } else {
       loadCategory('popular')
     }
@@ -99,12 +136,23 @@ export function SearchPage() {
   }
 
   const handleFilterSearch = async () => {
+    // Update URL params
+    const newParams = new URLSearchParams()
+    if (selectedGenres.length > 0) {
+      newParams.set('genres', selectedGenres.join(','))
+    }
+    if (yearRange.min) newParams.set('year_min', yearRange.min)
+    if (yearRange.max) newParams.set('year_max', yearRange.max)
+    if (minRating) newParams.set('rating_min', minRating)
+    setSearchParams(newParams)
+    
     setLoading(true)
     setHasSearched(true)
+    setActiveCategory('' as ExploreCategory) // Clear active category when filtering
 
     try {
       const data = await searchApi.movies({
-        query: searchParams.get('q') || '',
+        query: '', // No text query needed for filter search
         genres: selectedGenres.join(',') || undefined,
         year_min: yearRange.min ? parseInt(yearRange.min) : undefined,
         year_max: yearRange.max ? parseInt(yearRange.max) : undefined,
@@ -120,12 +168,17 @@ export function SearchPage() {
     }
   }
 
-  // Re-run filter search when filters change
+  // Re-run filter search when filters change (only in filter mode, skip initial mount)
   useEffect(() => {
-    if (searchMode === 'filter' && hasSearched) {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    
+    if (searchMode === 'filter' && (selectedGenres.length > 0 || yearRange.min || yearRange.max || minRating)) {
       handleFilterSearch()
     }
-  }, [selectedGenres, yearRange, minRating])
+  }, [selectedGenres, yearRange, minRating, searchMode])
 
   const getSearchTypeLabel = () => {
     switch (searchType) {
@@ -184,7 +237,13 @@ export function SearchPage() {
           {/* Mode Toggle */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setSearchMode('smart')}
+              onClick={() => {
+                setSearchMode('smart')
+                setActiveCategory('popular')
+                if (!hasSearched) {
+                  loadCategory('popular')
+                }
+              }}
               className={clsx(
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                 searchMode === 'smart'
@@ -196,7 +255,13 @@ export function SearchPage() {
               Smart Search
             </button>
             <button
-              onClick={() => setSearchMode('filter')}
+              onClick={() => {
+                setSearchMode('filter')
+                // If filters are already set, search immediately
+                if (selectedGenres.length > 0 || yearRange.min || yearRange.max || minRating) {
+                  handleFilterSearch()
+                }
+              }}
               className={clsx(
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                 searchMode === 'filter'
@@ -280,46 +345,62 @@ export function SearchPage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="flex flex-wrap items-center gap-4"
+              className="space-y-4"
             >
-              <GenreFilter
-                selectedGenres={selectedGenres}
-                onGenresChange={setSelectedGenres}
-              />
-              
-              {/* Year Range */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  placeholder="From year"
-                  value={yearRange.min}
-                  onChange={(e) => setYearRange(prev => ({ ...prev, min: e.target.value }))}
-                  className="w-24 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
+              <div className="flex flex-wrap items-center gap-4">
+                <GenreFilter
+                  selectedGenres={selectedGenres}
+                  onGenresChange={setSelectedGenres}
                 />
-                <span className="text-slate-500">to</span>
-                <input
-                  type="number"
-                  placeholder="To year"
-                  value={yearRange.max}
-                  onChange={(e) => setYearRange(prev => ({ ...prev, max: e.target.value }))}
-                  className="w-24 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
-                />
-              </div>
+                
+                {/* Year Range */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="From year"
+                    value={yearRange.min}
+                    onChange={(e) => setYearRange(prev => ({ ...prev, min: e.target.value }))}
+                    className="w-24 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
+                  />
+                  <span className="text-slate-500">to</span>
+                  <input
+                    type="number"
+                    placeholder="To year"
+                    value={yearRange.max}
+                    onChange={(e) => setYearRange(prev => ({ ...prev, max: e.target.value }))}
+                    className="w-24 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
+                  />
+                </div>
 
-              {/* Min Rating */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">Min Rating:</span>
-                <input
-                  type="number"
-                  placeholder="0"
-                  min="0"
-                  max="10"
-                  step="0.5"
-                  value={minRating}
-                  onChange={(e) => setMinRating(e.target.value)}
-                  className="w-20 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
-                />
+                {/* Min Rating */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-400">Min Rating:</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={minRating}
+                    onChange={(e) => setMinRating(e.target.value)}
+                    className="w-20 px-3 py-2 rounded-lg glass border border-slate-700/50 text-white text-sm placeholder-slate-500 focus:border-cinema-500/50"
+                  />
+                </div>
               </div>
+              
+              {/* Search Button */}
+              <button
+                onClick={handleFilterSearch}
+                disabled={loading || (selectedGenres.length === 0 && !yearRange.min && !yearRange.max && !minRating)}
+                className={clsx(
+                  'px-6 py-2 rounded-lg text-sm font-medium transition-all',
+                  loading || (selectedGenres.length === 0 && !yearRange.min && !yearRange.max && !minRating)
+                    ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+                    : 'bg-cinema-500 text-white hover:bg-cinema-600'
+                )}
+              >
+                {loading ? 'Searching...' : 'Search with Filters'}
+              </button>
             </motion.div>
           )}
         </div>
