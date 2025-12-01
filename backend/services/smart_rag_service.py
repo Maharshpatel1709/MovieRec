@@ -159,10 +159,9 @@ class SmartRAGService:
                     lambda a=actor, l=limit: graph_query_service.search_by_actor(a, limit=l)
                 )
             elif mood_genres and genres:
-                # BOTH mood AND explicit genres - use AND logic between them
-                # Movie must have ALL explicit genres AND at least one mood genre
-                combined_genres = list(set(genres))  # Explicit genres with AND
-                logger.info(f"Combined search: explicit genres {genres} (AND) + mood genres {mood_genres}")
+                # BOTH mood AND explicit genres - combine all genres with AND
+                combined_genres = list(set(mood_genres + genres))
+                logger.info(f"Combined search: mood genres {mood_genres} + explicit genres {genres} = {combined_genres} (AND logic)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=combined_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
@@ -170,12 +169,12 @@ class SmartRAGService:
                     )
                 )
             elif mood_genres:
-                # Mood-only search - use OR logic (scary = Horror OR Thriller)
-                logger.info(f"Mood search with genres: {mood_genres} (OR logic)")
+                # Mood search - use AND logic (scary = Horror AND Thriller)
+                logger.info(f"Mood search with genres: {mood_genres} (AND logic)")
                 results = await loop.run_in_executor(
                     self._executor,
                     lambda g=mood_genres, l=limit, ymin=year_min, ymax=year_max: graph_query_service.search_by_genre(
-                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=False
+                        g, limit=l, year_min=ymin, year_max=ymax, use_and_logic=True
                     )
                 )
             elif genres:
